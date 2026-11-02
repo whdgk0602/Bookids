@@ -8,6 +8,8 @@ type Props = {
   // 서버에 키가 없거나(mock 모드) 마이크를 쓸 수 없을 때 대신 쓰는 대답
   mockAnswer: () => string;
   onAnswer: (text: string) => void;
+  // 녹음을 시작할 때 (캐릭터 음성을 멈춰 녹음에 섞이지 않게)
+  onPressStart?: () => void;
 };
 
 type State = "idle" | "listening" | "thinking" | "retry";
@@ -16,7 +18,7 @@ const MIN_RECORDING_MS = 300;
 const RETRY_MESSAGE_MS = 2000;
 
 // 누르고 말하기 (INP-04): 누르는 동안 녹음하고, 손을 떼면 음성인식 결과를 넘긴다.
-export default function PushToTalk({ disabled, mockAnswer, onAnswer }: Props) {
+export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStart }: Props) {
   const [state, setStateValue] = useState<State>("idle");
   const [retryMessage, setRetryMessage] = useState("");
   // 누름과 뗌이 다시 그려지기 전에 연달아 와도 맞게 판단하도록 ref로 현재 상태를 본다
@@ -76,6 +78,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer }: Props) {
     if (disabled || stateRef.current !== "idle") return;
     holdingRef.current = true;
     pressedAtRef.current = e.timeStamp;
+    onPressStart?.();
     setState("listening");
 
     acquiringRef.current = true;

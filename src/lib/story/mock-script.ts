@@ -1,12 +1,21 @@
-import type { AiTurn, ChoiceCard, KidAnswer } from "./types";
+import { INITIAL_SCAFFOLD } from "./scaffold";
+import type { AiTurn, Choice, Scene, TurnResult } from "./types";
 
-// 단계 1 목업용 고정 시나리오. 단계 3에서 실제 대화 엔진으로 대체된다.
+// 키가 없을 때(mock 모드) 쓰는 고정 시나리오.
 // 순서: 첫 문장 → (질문 → 대답) 반복 → 마무리
 
 export const MOCK_TITLE = "토끼와 배고픈 곰";
 export const MOCK_DRAWING = "/sample/drawing.svg";
 
-export const MOCK_FIRST_ANSWER: KidAnswer = {
+type KidAnswer = {
+  text: string;
+  echo: string;
+  page?: { text: string; scene: Scene };
+};
+
+type ChoiceCard = KidAnswer & Choice;
+
+const FIRST_ANSWER: KidAnswer = {
   text: "토끼가 숲에 갔어",
   echo: "토끼가 숲에 갔구나!",
   page: {
@@ -49,7 +58,7 @@ const bearChoices: ChoiceCard[] = [
 ];
 
 // turns[i]는 AI 질문, spoken은 마이크를 눌렀을 때 아이가 했다고 치는 대답
-export const MOCK_TURNS: (AiTurn & { spoken: KidAnswer })[] = [
+const TURNS: (AiTurn & { cards?: ChoiceCard[]; spoken: KidAnswer })[] = [
   {
     question: "숲에서 토끼는 누구를 만났을까?",
     type: "사건",
@@ -74,7 +83,7 @@ export const MOCK_TURNS: (AiTurn & { spoken: KidAnswer })[] = [
     question: "곰은 기뻤을까, 무서웠을까, 배가 고팠을까?",
     type: "감정",
     stage: "choice",
-    choices: bearChoices,
+    cards: bearChoices,
     spoken: bearChoices[2],
   },
   {
@@ -105,4 +114,25 @@ export const MOCK_TURNS: (AiTurn & { spoken: KidAnswer })[] = [
   },
 ];
 
-export const MOCK_CLOSING = "정말 멋진 이야기야. 우리 그림책이 완성됐어!";
+const CLOSING = "정말 멋진 이야기야. 우리 그림책이 완성됐어!";
+
+// step: 아이가 대답한 질문의 순서 (-1이면 그림 이야기에 대한 첫 대답)
+export function mockSpoken(step: number): string {
+  return step < 0 ? FIRST_ANSWER.text : TURNS[step].spoken.text;
+}
+
+export function mockTurn(step: number, said: string): TurnResult {
+  const asked = TURNS[step];
+  const answer = step < 0 ? FIRST_ANSWER : (asked.cards?.find((c) => c.label === said) ?? asked.spoken);
+  const next = TURNS[step + 1];
+  return {
+    echo: next ? answer.echo : `${answer.echo} ${CLOSING}`,
+    page: answer.page ?? null,
+    next: next
+      ? { question: next.question, type: next.type, stage: next.stage, choices: next.cards?.map(({ emoji, label }) => ({ emoji, label })) }
+      : null,
+    done: !next,
+    title: next ? null : MOCK_TITLE,
+    scaffold: INITIAL_SCAFFOLD,
+  };
+}

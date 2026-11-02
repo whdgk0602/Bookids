@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bookids (프로토타입)
 
-## Getting Started
+아이의 그림과 말을 입력하면 AI가 되물어 이야기를 이어 가고, 대답을 삽화로 그려 그림책을 완성하는 서비스의 프로토타입.
 
-First, run the development server:
+## 실행
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # 처음 한 번. 키가 없으면 AI_MODE=mock 그대로 두면 됨
+npm run dev                  # PC에서 http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`localhost`는 브라우저가 보안 연결로 취급하므로 PC에서는 HTTP로도 마이크가 동작한다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 태블릿에서 테스트
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+태블릿은 PC의 `192.168.x.x` 주소로 접속하게 되는데, 이 경우 HTTPS가 아니면 마이크가 막힌다.
 
-## Learn More
+- `npm run dev:https` — 자체 서명 인증서로 HTTPS 실행. 첫 실행 시 로컬 인증 기관(mkcert)을
+  Windows에 설치하는 단계가 있어 **관리자 확인이 필요**하다. 태블릿에서는 인증서 경고가 뜨며 "계속"을 눌러 접속한다.
+- 대안: 터널(cloudflared 등)로 임시 HTTPS 주소를 만들어 접속.
 
-To learn more about Next.js, take a look at the following resources:
+## 화면
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| 경로 | 내용 |
+|---|---|
+| `/` | 홈 |
+| `/story` | 이야기 만들기 (시작 → 되묻기·삽화 반복 → 완성 그림책) |
+| `/check` | 기기 점검 (보안 연결, 마이크 녹음) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+기능 명세는 [docs/spec.md](docs/spec.md) 참고.
 
-## Deploy on Vercel
+## 진행 단계
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [x] 단계 0. 프로젝트 세팅 (Next.js, 환경변수 템플릿, 기기 점검 페이지)
+- [x] 단계 1. 화면 흐름 목업 (가짜 시나리오로 시작 → 되묻기·삽화 → 그림책까지)
+- [ ] 단계 2. 입력: 그림·음성
+- [ ] 단계 3. 대화 엔진
+- [ ] 단계 4. 삽화 생성
+- [ ] 단계 5. 전체 연결·그림책 완성
+- [ ] 단계 6. 다듬기·시연 준비

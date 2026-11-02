@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="400" height="300" fill="#fffdf7"/>
+  <!-- 해 -->
+  <circle cx="340" cy="55" r="28" stroke="#f59e0b" stroke-width="6" fill="#fde68a"/>
+  <path d="M340 12v-8M340 106v-8M297 55h-8M391 55h-8M310 25l-6-6M370 85l6 6M370 25l6-6M310 85l-6 6" stroke="#f59e0b" stroke-width="5"/>
+  <!-- 땅 -->
+  <path d="M10 262c60-12 120 8 190-4s130 10 190-2" stroke="#65a30d" stroke-width="7"/>
+  <!-- 나무 -->
+  <path d="M70 258l4-80M64 258l-2-78" stroke="#92400e" stroke-width="8"/>
+  <path d="M30 170c-14-40 20-70 40-60 6-30 52-24 52 6 30 4 28 50 2 56-14 18-70 18-94-2z" stroke="#16a34a" stroke-width="6" fill="#86efac"/>
+  <!-- 토끼 -->
+  <path d="M215 150c-8-60 4-80 14-80s14 30 4 82" stroke="#6b7280" stroke-width="6" fill="#fff"/>
+  <path d="M250 152c4-58 20-76 30-72s6 34-12 76" stroke="#6b7280" stroke-width="6" fill="#fff"/>
+  <ellipse cx="245" cy="185" rx="48" ry="40" stroke="#6b7280" stroke-width="6" fill="#fff"/>
+  <circle cx="228" cy="178" r="6" fill="#1f2937"/>
+  <circle cx="262" cy="178" r="6" fill="#1f2937"/>
+  <path d="M238 196q7 8 14 0" stroke="#ec4899" stroke-width="5"/>
+  <path d="M215 236c-6 14-2 22 8 22M275 236c6 14 2 22-8 22" stroke="#6b7280" stroke-width="6"/>
+  <ellipse cx="245" cy="240" rx="34" ry="18" stroke="#6b7280" stroke-width="6" fill="#fff"/>
+</svg>

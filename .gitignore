@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 키 이름만 담긴 예시 파일은 커밋
+!.env.example
+/certificates
+
+# 로컬 도구 상태
+/.omc

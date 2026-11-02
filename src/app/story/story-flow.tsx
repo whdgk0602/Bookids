@@ -3,16 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import BookViewer from "@/components/kid/book-viewer";
+import DrawingCanvas from "@/components/kid/drawing-canvas";
 import GuideBubble from "@/components/kid/guide-bubble";
 import PushToTalk from "@/components/kid/push-to-talk";
 import SceneArt from "@/components/kid/scene-art";
+import { loadPhoto } from "@/lib/image/load-photo";
 import { MOCK_CLOSING, MOCK_DRAWING, MOCK_FIRST_ANSWER, MOCK_TITLE, MOCK_TURNS } from "@/lib/story/mock-script";
 import type { KidAnswer, ScaffoldStage, StoryPage } from "@/lib/story/types";
 
-// 화면 1 시작 → 화면 2·3 되묻기와 삽화(반복) → 완성 → 화면 4 그림책
-type Phase = "start" | "talk" | "done" | "book";
+// 화면 1 시작(그리기) → 화면 2·3 되묻기와 삽화(반복) → 완성 → 화면 4 그림책
+type Phase = "start" | "draw" | "talk" | "done" | "book";
 
 type State = {
   phase: Phase;
@@ -24,8 +26,9 @@ type State = {
 };
 
 type Action =
-  | { type: "pickDrawing"; src: string }
-  | { type: "answer"; answer: KidAnswer; pageId: string }
+  | { type: "startDrawing" }
+  | { type: "pickDrawing"; src: string | null }
+  | { type: "answer"; said: string; answer: KidAnswer; pageId: string }
   | { type: "illustrated"; pageId: string }
   | { type: "openBook" }
   | { type: "reset" };
@@ -41,10 +44,12 @@ const INITIAL: State = {
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case "startDrawing":
+      return { ...state, phase: "draw" };
     case "pickDrawing":
-      return { ...state, drawing: action.src };
+      return { ...state, phase: "start", drawing: action.src ?? state.drawing };
     case "answer": {
-      const { answer, pageId } = action;
+      const { said, answer, pageId } = action;
       const pages = answer.page
         ? [...state.pages, { id: pageId, ...answer.page, status: "drawing" as const }]
         : state.pages;
@@ -53,7 +58,7 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         pages,
-        kidSaid: answer.text,
+        kidSaid: said,
         turn: nextTurn,
         phase: next ? "talk" : "done",
         guide: [answer.echo, next ? next.question : MOCK_CLOSING],
@@ -97,11 +102,22 @@ export default function StoryFlow() {
   function answer(said: string) {
     const kidAnswer = mockAnswerFor(state, said);
     const pageId = `page-${state.pages.length + 1}`;
-    dispatch({ type: "answer", answer: kidAnswer, pageId });
+    dispatch({ type: "answer", said, answer: kidAnswer, pageId });
     // 삽화는 기다리지 않고 뒤에서 그려진다 (ILL-01)
     if (kidAnswer.page) {
       timers.current.push(setTimeout(() => dispatch({ type: "illustrated", pageId }), ILLUSTRATION_DELAY_MS));
     }
+  }
+
+  if (state.phase === "draw") {
+    return (
+      <div className="flex flex-1 flex-col p-4 sm:p-6">
+        <DrawingCanvas
+          onDone={(src) => dispatch({ type: "pickDrawing", src })}
+          onCancel={() => dispatch({ type: "pickDrawing", src: null })}
+        />
+      </div>
+    );
   }
 
   if (state.phase === "book" && state.drawing) {
@@ -126,7 +142,11 @@ export default function StoryFlow() {
         {/* 왼쪽: 그림 또는 지금 페이지 */}
         <section className="flex flex-col gap-3">
           {state.phase === "start" ? (
-            <DrawingPicker drawing={state.drawing} onPick={(src) => dispatch({ type: "pickDrawing", src })} />
+            <DrawingPicker
+              drawing={state.drawing}
+              onDraw={() => dispatch({ type: "startDrawing" })}
+              onPick={(src) => dispatch({ type: "pickDrawing", src })}
+            />
           ) : (
             latestPage && (
               <div key={`${latestPage.id}-${latestPage.status}`} className="animate-pop-in flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md">
@@ -186,35 +206,71 @@ export default function StoryFlow() {
   );
 }
 
-function DrawingPicker({ drawing, onPick }: { drawing: string | null; onPick: (src: string) => void }) {
-  if (drawing) {
+type PickerProps = {
+  drawing: string | null;
+  onDraw: () => void;
+  onPick: (src: string) => void;
+};
+
+// 그림 고르기: 직접 그리기(INP-01), 종이 그림 촬영·앨범(INP-02), 샘플
+function DrawingPicker({ drawing, onDraw, onPick }: PickerProps) {
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const albumRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [changing, setChanging] = useState(false);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 같은 사진을 다시 골라도 반응하도록
+    if (!file) return;
+    setLoading(true);
+    try {
+      onPick(await loadPhoto(file));
+      setChanging(false);
+    } catch (error) {
+      console.error("사진을 불러오지 못했습니다", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (drawing && !changing) {
     return (
-      <div className="animate-pop-in relative aspect-[4/3] w-full overflow-hidden rounded-3xl border-8 border-white bg-white shadow-md">
-        <Image src={drawing} alt="내 그림" fill className="object-contain" />
-      </div>
+      <>
+        <div className="animate-pop-in relative aspect-[4/3] w-full overflow-hidden rounded-3xl border-8 border-white bg-white shadow-md">
+          <Image src={drawing} alt="내 그림" fill unoptimized className="object-contain" />
+        </div>
+        <button type="button" onClick={() => setChanging(true)} className="self-center rounded-full bg-white px-5 py-2 text-lg shadow-sm">
+          🔄 다른 그림으로
+        </button>
+      </>
     );
   }
+
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {/* 그리기·촬영은 단계 2(INP-01, INP-02)에서 구현 */}
-      <PickButton emoji="✏️" label="그리기" soon />
-      <PickButton emoji="📷" label="사진 찍기" soon />
-      <PickButton emoji="🖼️" label="샘플 그림" onClick={() => onPick(MOCK_DRAWING)} />
+    <div className="grid grid-cols-2 gap-3">
+      <PickButton emoji="✏️" label="그리기" onClick={onDraw} />
+      <PickButton emoji="📷" label="사진 찍기" disabled={loading} onClick={() => cameraRef.current?.click()} />
+      <PickButton emoji="🗂️" label="앨범에서" disabled={loading} onClick={() => albumRef.current?.click()} />
+      <PickButton emoji="🖼️" label="샘플 그림" onClick={() => { onPick(MOCK_DRAWING); setChanging(false); }} />
+      {/* capture: 태블릿·휴대폰에서 바로 뒤쪽 카메라를 연다 */}
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onFile} hidden />
+      <input ref={albumRef} type="file" accept="image/*" onChange={onFile} hidden />
+      {loading && <p className="col-span-2 text-center text-xl">사진을 불러오는 중…</p>}
     </div>
   );
 }
 
-function PickButton({ emoji, label, soon, onClick }: { emoji: string; label: string; soon?: boolean; onClick?: () => void }) {
+function PickButton({ emoji, label, disabled, onClick }: { emoji: string; label: string; disabled?: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
-      disabled={soon}
+      disabled={disabled}
       onClick={onClick}
-      className="flex aspect-square flex-col items-center justify-center gap-2 rounded-3xl bg-white text-xl font-bold shadow-md active:scale-95 disabled:opacity-40"
+      className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-3xl bg-white text-xl font-bold shadow-md active:scale-95 disabled:opacity-40"
     >
       <span className="text-6xl">{emoji}</span>
       {label}
-      {soon && <span className="text-sm font-normal text-zinc-500">준비 중</span>}
     </button>
   );
 }

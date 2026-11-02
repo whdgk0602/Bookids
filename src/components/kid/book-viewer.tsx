@@ -29,7 +29,7 @@ export default function BookViewer({ title, drawing, pages, onExit }: Props) {
           {index === 0 && (
             <>
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border-4 border-amber-200">
-                <Image src={drawing} alt="아이가 그린 그림" fill className="object-contain" />
+                <Image src={drawing} alt="아이가 그린 그림" fill unoptimized className="object-contain" />
               </div>
               <h1 className="text-center text-4xl font-bold">{title}</h1>
               <p className="text-center text-xl text-zinc-500">글·그림: 우리 아이</p>

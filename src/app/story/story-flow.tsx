@@ -12,7 +12,7 @@ import SceneArt from "@/components/kid/scene-art";
 import { useSpeech } from "@/lib/audio/use-speech";
 import { loadPhoto } from "@/lib/image/load-photo";
 import { toImagePayload } from "@/lib/image/to-payload";
-import { requestDescribe, requestTurn } from "@/lib/story/client";
+import { requestDescribe, requestIllustration, requestTurn } from "@/lib/story/client";
 import { MOCK_DRAWING, mockSpoken, mockTurn } from "@/lib/story/mock-script";
 import { INITIAL_SCAFFOLD, type ScaffoldState } from "@/lib/story/scaffold";
 import type { AiTurn, DrawingInfo, ScaffoldStage, StoryPage, TurnResult } from "@/lib/story/types";
@@ -42,7 +42,7 @@ type Action =
   | { type: "asked"; said: string }
   | { type: "answered"; said: string; result: TurnResult; pageId: string }
   | { type: "failed" }
-  | { type: "illustrated"; pageId: string }
+  | { type: "illustrated"; pageId: string; image?: string }
   | { type: "openBook" }
   | { type: "reset" };
 
@@ -95,7 +95,10 @@ function reducer(state: State, action: Action): State {
     case "failed":
       return { ...state, waiting: false, guide: ["앗, 잘 못 들었어.", "다시 한 번 말해 줄래?"] };
     case "illustrated":
-      return { ...state, pages: state.pages.map((p) => (p.id === action.pageId ? { ...p, status: "done" } : p)) };
+      return {
+        ...state,
+        pages: state.pages.map((p) => (p.id === action.pageId ? { ...p, image: action.image, status: "done" } : p)),
+      };
     case "openBook":
       return { ...state, phase: "book" };
     case "reset":
@@ -103,8 +106,8 @@ function reducer(state: State, action: Action): State {
   }
 }
 
-// 단계 4에서 실제 삽화 생성으로 바뀐다
-const ILLUSTRATION_DELAY_MS = 2500;
+// 삽화 공급자가 없을 때(mock) 그리는 척하는 시간
+const MOCK_ILLUSTRATION_DELAY_MS = 2500;
 const DESCRIBE_WAIT_MS = 4000;
 
 export default function StoryFlow() {
@@ -113,6 +116,10 @@ export default function StoryFlow() {
   const { speak, stop } = useSpeech();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const describing = useRef<Promise<DrawingInfo | null> | null>(null);
+  // AI에 보낼 형태로 바꾼 아이 그림 (그림 인식용 1024px)
+  const payload = useRef<Promise<string> | null>(null);
+  // 삽화 참조용 512px 그림
+  const reference = useRef<Promise<string> | null>(null);
   // 화면을 나갔다 오면 늦게 도착한 응답을 버리기 위한 회차 번호
   const epoch = useRef(0);
 
@@ -127,6 +134,8 @@ export default function StoryFlow() {
     () => () => {
       epoch.current++;
       describing.current = null;
+      payload.current = null;
+      reference.current = null;
       dispatch({ type: "reset" });
     },
     [],
@@ -142,7 +151,9 @@ export default function StoryFlow() {
     dispatch({ type: "pickDrawing", src });
     // 아이가 첫 문장을 말하는 동안 그림을 미리 알아본다 (INP-03)
     const myEpoch = epoch.current;
-    describing.current = toImagePayload(src)
+    payload.current = toImagePayload(src);
+    reference.current = toImagePayload(src, 512);
+    describing.current = payload.current
       .then(requestDescribe)
       .then((res) => {
         if (res.mode !== "live" || epoch.current !== myEpoch) return null;
@@ -163,6 +174,7 @@ export default function StoryFlow() {
       const res = await requestTurn({
         drawing: drawingInfo,
         pages: state.pages.map((p) => p.text),
+        scenes: sceneHistory(state.pages),
         history: state.history,
         question: state.current?.question ?? null,
         answer: said,
@@ -173,12 +185,28 @@ export default function StoryFlow() {
       const pageId = `page-${state.pages.length + 1}`;
       dispatch({ type: "answered", said, result, pageId });
       // 삽화는 기다리지 않고 뒤에서 그려진다 (ILL-01)
-      if (result.page) {
-        timers.current.push(setTimeout(() => dispatch({ type: "illustrated", pageId }), ILLUSTRATION_DELAY_MS));
-      }
+      if (result.page) void illustrate(pageId, result.page.sceneDescription, drawingInfo, sceneHistory(state.pages));
     } catch (error) {
       console.error(error);
       if (epoch.current === myEpoch) dispatch({ type: "failed" });
+    }
+  }
+
+  async function illustrate(pageId: string, scene: string | undefined, drawingInfo: DrawingInfo | null, previousScenes: string[]) {
+    const myEpoch = epoch.current;
+    const fakeDrawing = () =>
+      timers.current.push(setTimeout(() => dispatch({ type: "illustrated", pageId }), MOCK_ILLUSTRATION_DELAY_MS));
+    try {
+      const ref = await reference.current;
+      if (!ref || !scene) return fakeDrawing();
+      const res = await requestIllustration({ reference: ref, scene, previousScenes, drawing: drawingInfo, seed: seedFrom(ref) });
+      if (epoch.current !== myEpoch) return;
+      if (res.mode === "mock") return fakeDrawing();
+      dispatch({ type: "illustrated", pageId, image: res.image });
+    } catch (error) {
+      // 삽화가 실패해도 이야기는 이어 간다. 장면 이모지로 페이지를 채운다
+      console.error(error);
+      if (epoch.current === myEpoch) dispatch({ type: "illustrated", pageId });
     }
   }
 
@@ -218,7 +246,7 @@ export default function StoryFlow() {
           ) : (
             latestPage && (
               <div key={`${latestPage.id}-${latestPage.status}`} className="animate-pop-in flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md">
-                <SceneArt scene={latestPage.scene} drawing={latestPage.status === "drawing"} />
+                <SceneArt scene={latestPage.scene} image={latestPage.image} drawing={latestPage.status === "drawing"} />
                 <p className="text-center text-2xl">{latestPage.text}</p>
               </div>
             )
@@ -276,6 +304,17 @@ export default function StoryFlow() {
       </main>
     </div>
   );
+}
+
+function sceneHistory(pages: StoryPage[]): string[] {
+  return pages.flatMap((p) => (p.sceneDescription ? [p.sceneDescription] : []));
+}
+
+// 같은 그림이면 같은 시드를 써서 페이지마다 인물 모습이 덜 바뀌게 한다 (ILL-02)
+function seedFrom(text: string): number {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 97) hash = (hash * 31 + text.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 2_147_483_647;
 }
 
 // 그림 인식이 아직 안 끝났으면 잠깐만 기다리고, 늦으면 그림 정보 없이 진행한다
@@ -371,7 +410,13 @@ function PageStrip({ pages }: { pages: StoryPage[] }) {
           }`}
           title={p.text}
         >
-          {p.status === "done" ? p.scene.emojis[0] : i + 1}
+          {p.status !== "done" ? (
+            i + 1
+          ) : p.image ? (
+            <Image src={p.image} alt="" width={56} height={42} unoptimized className="size-full rounded-xl object-cover" />
+          ) : (
+            p.scene.emojis[0]
+          )}
         </li>
       ))}
     </ol>

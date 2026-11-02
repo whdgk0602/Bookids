@@ -125,6 +125,7 @@ const SCENE_COLORS: [string, string][] = [
 function buildTurnPrompt(req: TurnRequest, decision: ScaffoldDecision): string {
   const lines: string[] = [];
   if (req.drawing) lines.push(`[아이 그림] ${req.drawing.summary} (보이는 것: ${req.drawing.elements.join(", ")})`);
+  if (req.scenes?.length) lines.push(`[앞 장면 삽화 설명]\n${req.scenes.slice(-4).join("\n")}`);
   lines.push(req.pages.length ? `[지금까지 이야기]\n${req.pages.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : "[지금까지 이야기] 아직 없음");
   if (req.history.length) {
     lines.push(`[최근 대화]\n${req.history.slice(-4).map((h) => `토리: ${h.question}\n아이: ${h.answer || "(대답 없음)"}`).join("\n")}`);
@@ -139,7 +140,9 @@ function buildTurnPrompt(req: TurnRequest, decision: ScaffoldDecision): string {
     );
     tasks.push("pageText: 아이 대답을 그림책 문장 하나로. '~했어요' 같은 해요체 과거형. 아이 낱말을 살리고 새 사건은 넣지 마. 40자 이내.");
     tasks.push("sceneEmojis: 이 장면을 나타내는 이모지 2~4개.");
-    tasks.push("sceneDescription: 이 장면의 삽화를 그리기 위한 한 문장 설명 (누가, 무엇을, 어디서).");
+    tasks.push(
+      "sceneDescription: 이 장면의 삽화를 그리기 위한 **영어** 한 문장 (who, doing what, where). 이 장면에 나오는 인물을 한 명도 빠짐없이 적고, 인물마다 [앞 장면 삽화 설명]과 똑같은 생김새 표현을 써 (예: 'the white rabbit', 'the brown bear'). 처음 나오는 인물은 색과 생김새를 정해서 적어. 인물마다 이 장면의 표정도 적어 (예: 'the smiling brown bear').",
+    );
   } else {
     // 다독임 문장은 코드가 정한다 (encourage)
     tasks.push("echo, pageText, sceneDescription은 빈 문자열, sceneEmojis는 빈 배열.");

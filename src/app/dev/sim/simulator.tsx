@@ -61,6 +61,7 @@ export default function Simulator() {
       const res = await requestTurn({
         drawing,
         pages: log.flatMap((l) => (l.result.page ? [l.result.page.text] : [])),
+        scenes: log.flatMap((l) => (l.result.page?.sceneDescription ? [l.result.page.sceneDescription] : [])),
         history: log.map((l, i) => ({ question: `${i > 0 ? log[i - 1].result.echo : ""} ${l.asked?.question ?? FIRST_QUESTION}`.trim(), answer: l.answer })),
         question: current?.question ?? null,
         answer,

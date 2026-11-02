@@ -37,7 +37,7 @@ export default function BookViewer({ title, drawing, pages, onExit }: Props) {
           )}
           {page && (
             <>
-              <SceneArt scene={page.scene} />
+              <SceneArt scene={page.scene} image={page.image} />
               <p className="text-center text-3xl leading-snug">{page.text}</p>
             </>
           )}

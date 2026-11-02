@@ -1,8 +1,7 @@
-const MAX_SIDE = 1024;
-
 // 화면에 쓰는 그림(SVG 샘플, 캔버스 PNG, 사진)을 AI에 보낼 JPEG data URL로 바꾼다.
 // SVG는 AI가 읽지 못하고, 큰 PNG는 전송이 느리다.
-export async function toImagePayload(src: string): Promise<string> {
+// 그림 인식에는 1024px, 삽화 참조에는 512px을 쓴다 (삽화 모델이 512px 이하 참조를 요구함)
+export async function toImagePayload(src: string, maxSide = 1024): Promise<string> {
   const img = new Image();
   img.src = src;
   await img.decode();
@@ -11,7 +10,7 @@ export async function toImagePayload(src: string): Promise<string> {
   const height = img.naturalHeight || 900;
   const isVector = src.endsWith(".svg") || src.startsWith("data:image/svg");
   // 벡터는 키워서 그리고, 사진은 줄이기만 한다
-  const scale = isVector ? MAX_SIDE / Math.max(width, height) : Math.min(1, MAX_SIDE / Math.max(width, height));
+  const scale = isVector ? maxSide / Math.max(width, height) : Math.min(1, maxSide / Math.max(width, height));
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(width * scale);

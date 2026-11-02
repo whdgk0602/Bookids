@@ -25,8 +25,10 @@ export type StoryPage = {
   id: string;
   text: string;
   scene: Scene;
-  // 삽화 생성(ILL-01)에 쓸 장면 설명
+  // 삽화 생성(ILL-01)에 쓸 장면 설명 (영어)
   sceneDescription?: string;
+  // 생성된 삽화 (data URL). 없으면 장면 이모지로 대신 보여 준다
+  image?: string;
   status: "drawing" | "done";
 };
 
@@ -39,6 +41,8 @@ export type DrawingInfo = {
 export type TurnRequest = {
   drawing: DrawingInfo | null;
   pages: string[];
+  // 앞 페이지 삽화 설명 (영어). 장면 설명에서 인물 생김새를 같게 유지하려고 넘긴다
+  scenes?: string[];
   history: { question: string; answer: string }[];
   // 아이가 지금 대답한 질문 (첫 대답이면 null)
   question: string | null;

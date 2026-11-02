@@ -1,7 +1,21 @@
+import Image from "next/image";
 import type { Scene } from "@/lib/story/types";
 
-// 삽화 자리표시. 단계 4에서 생성된 이미지로 바뀐다.
-export default function SceneArt({ scene, drawing }: { scene: Scene; drawing?: boolean }) {
+type Props = {
+  scene: Scene;
+  // 생성된 삽화. 없으면 장면 이모지로 대신 보여 준다
+  image?: string;
+  drawing?: boolean;
+};
+
+export default function SceneArt({ scene, image, drawing }: Props) {
+  if (image && !drawing) {
+    return (
+      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-white">
+        <Image src={image} alt="" fill unoptimized className="object-contain" />
+      </div>
+    );
+  }
   return (
     <div
       className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-2xl"

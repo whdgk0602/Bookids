@@ -1,5 +1,6 @@
 import type { Usage } from "@/lib/ai/gemini";
-import type { DrawingInfo, TurnRequest, TurnResult } from "./types";
+import type { SessionLog } from "./session-log";
+import type { DrawingInfo, Scene, TurnRequest, TurnResult } from "./types";
 
 // 브라우저에서 이야기 API를 부르는 함수들. 서버에 키가 없으면 { mode: "mock" }이 온다.
 
@@ -16,6 +17,13 @@ async function post<T>(url: string, body: unknown): Promise<T> {
   if (!res.ok) throw new Error(`${url} ${res.status}`);
   return res.json();
 }
+
+export const requestSaveBook = (book: {
+  title: string;
+  cover: string;
+  pages: { text: string; scene: Scene; image: string | null }[];
+  log: SessionLog;
+}) => post<{ id: string }>("/api/books", book);
 
 export const requestDescribe = (image: string) => post<DescribeResponse>("/api/story/describe", { image });
 export const requestTurn = (req: TurnRequest) => post<TurnResponse>("/api/story/turn", req);

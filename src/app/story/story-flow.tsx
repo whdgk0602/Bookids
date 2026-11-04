@@ -12,9 +12,10 @@ import SceneArt from "@/components/kid/scene-art";
 import { useSpeech } from "@/lib/audio/use-speech";
 import { loadPhoto } from "@/lib/image/load-photo";
 import { toImagePayload } from "@/lib/image/to-payload";
-import { requestDescribe, requestIllustration, requestTurn } from "@/lib/story/client";
+import { requestDescribe, requestIllustration, requestSaveBook, requestTurn } from "@/lib/story/client";
 import { MOCK_DRAWING, mockSpoken, mockTurn } from "@/lib/story/mock-script";
 import { INITIAL_SCAFFOLD, type ScaffoldState } from "@/lib/story/scaffold";
+import { newSessionLog, type SessionLog, type SttMeta } from "@/lib/story/session-log";
 import type { AiTurn, DrawingInfo, ScaffoldStage, StoryPage, TurnResult } from "@/lib/story/types";
 
 // 화면 1 시작(그리기) → 화면 2·3 되묻기와 삽화(반복) → 완성 → 화면 4 그림책
@@ -33,6 +34,7 @@ type State = {
   scaffold: ScaffoldState;
   mockStep: number; // mock 모드에서 지금 대답하는 질문 순서
   title: string | null;
+  saved: { status: "idle" | "saving" | "error" } | { status: "saved"; id: string };
 };
 
 type Action =
@@ -44,6 +46,8 @@ type Action =
   | { type: "failed" }
   | { type: "illustrated"; pageId: string; image?: string }
   | { type: "openBook" }
+  | { type: "save"; status: "saving" | "error" }
+  | { type: "saved"; id: string }
   | { type: "reset" };
 
 const FIRST_QUESTION = "어떤 그림을 그렸어? 그림 이야기를 들려줘!";
@@ -61,6 +65,7 @@ const INITIAL: State = {
   scaffold: INITIAL_SCAFFOLD,
   mockStep: -1,
   title: null,
+  saved: { status: "idle" },
 };
 
 function reducer(state: State, action: Action): State {
@@ -101,6 +106,10 @@ function reducer(state: State, action: Action): State {
       };
     case "openBook":
       return { ...state, phase: "book" };
+    case "save":
+      return { ...state, saved: { status: action.status } };
+    case "saved":
+      return { ...state, saved: { status: "saved", id: action.id } };
     case "reset":
       return INITIAL;
   }
@@ -122,6 +131,8 @@ export default function StoryFlow() {
   const reference = useRef<Promise<string> | null>(null);
   // 화면을 나갔다 오면 늦게 도착한 응답을 버리기 위한 회차 번호
   const epoch = useRef(0);
+  // 세션 로그 (LOG-01). 화면에 그리지 않으므로 상태가 아닌 ref에 쌓는다
+  const log = useRef<SessionLog | null>(null);
 
   useEffect(() => {
     const pending = timers.current;
@@ -136,6 +147,7 @@ export default function StoryFlow() {
       describing.current = null;
       payload.current = null;
       reference.current = null;
+      log.current = null;
       dispatch({ type: "reset" });
     },
     [],
@@ -151,12 +163,15 @@ export default function StoryFlow() {
     dispatch({ type: "pickDrawing", src });
     // 아이가 첫 문장을 말하는 동안 그림을 미리 알아본다 (INP-03)
     const myEpoch = epoch.current;
+    const session = newSessionLog();
+    log.current = session;
     payload.current = toImagePayload(src);
     reference.current = toImagePayload(src, 512);
     describing.current = payload.current
       .then(requestDescribe)
       .then((res) => {
         if (res.mode !== "live" || epoch.current !== myEpoch) return null;
+        session.drawing = { ...res.info, describeMs: res.ms };
         dispatch({ type: "described", info: res.info });
         return res.info;
       })
@@ -166,7 +181,7 @@ export default function StoryFlow() {
       });
   }
 
-  async function answer(said: string) {
+  async function answer(said: string, via: "voice" | "choice", stt: SttMeta | null = null) {
     const myEpoch = epoch.current;
     dispatch({ type: "asked", said });
     try {
@@ -183,6 +198,20 @@ export default function StoryFlow() {
       if (epoch.current !== myEpoch) return;
       const result = res.mode === "live" ? res.result : mockTurn(state.mockStep, said);
       const pageId = `page-${state.pages.length + 1}`;
+      log.current?.turns.push({
+        at: new Date().toISOString(),
+        question: state.current?.question ?? FIRST_QUESTION,
+        type: state.current?.type ?? null,
+        stage: state.current?.stage ?? null,
+        answer: said,
+        via: res.mode === "live" ? via : "mock",
+        stt,
+        turnMs: res.mode === "live" ? res.ms : null,
+        usage: res.mode === "live" ? res.usage : null,
+        echo: result.echo,
+        madePage: !!result.page,
+      });
+      if (result.done && log.current) log.current.finishedAt = new Date().toISOString();
       dispatch({ type: "answered", said, result, pageId });
       // 삽화는 기다리지 않고 뒤에서 그려진다 (ILL-01)
       if (result.page) void illustrate(pageId, result.page.sceneDescription, drawingInfo, sceneHistory(state.pages));
@@ -202,11 +231,14 @@ export default function StoryFlow() {
       const res = await requestIllustration({ reference: ref, scene, previousScenes, drawing: drawingInfo, seed: seedFrom(ref) });
       if (epoch.current !== myEpoch) return;
       if (res.mode === "mock") return fakeDrawing();
+      log.current?.illustrations.push({ page: pageNumber(pageId), ms: res.ms, ok: true });
       dispatch({ type: "illustrated", pageId, image: res.image });
     } catch (error) {
       // 삽화가 실패해도 이야기는 이어 간다. 장면 이모지로 페이지를 채운다
       console.error(error);
-      if (epoch.current === myEpoch) dispatch({ type: "illustrated", pageId });
+      if (epoch.current !== myEpoch) return;
+      log.current?.illustrations.push({ page: pageNumber(pageId), ms: null, ok: false });
+      dispatch({ type: "illustrated", pageId });
     }
   }
 
@@ -218,9 +250,36 @@ export default function StoryFlow() {
     );
   }
 
+  // 그림책을 펼치면 저장해서 공유 링크를 만든다 (BOK-03)
+  async function openBook() {
+    dispatch({ type: "openBook" });
+    const myEpoch = epoch.current;
+    const cover = await payload.current?.catch(() => null);
+    if (!cover || !log.current) return dispatch({ type: "save", status: "error" });
+    dispatch({ type: "save", status: "saving" });
+    try {
+      const { id } = await requestSaveBook({
+        title: state.title ?? "우리가 만든 이야기",
+        cover,
+        pages: state.pages.map((p) => ({ text: p.text, scene: p.scene, image: p.image ?? null })),
+        log: log.current,
+      });
+      if (epoch.current === myEpoch) dispatch({ type: "saved", id });
+    } catch (error) {
+      console.error("그림책을 저장하지 못했습니다", error);
+      if (epoch.current === myEpoch) dispatch({ type: "save", status: "error" });
+    }
+  }
+
   if (state.phase === "book" && state.drawing) {
     return (
-      <BookViewer title={state.title ?? "우리가 만든 이야기"} drawing={state.drawing} pages={state.pages} onExit={() => router.push("/")} />
+      <BookViewer
+        title={state.title ?? "우리가 만든 이야기"}
+        drawing={state.drawing}
+        pages={state.pages}
+        onExit={() => router.push("/")}
+        extras={<AdultTools saved={state.saved} title={state.title} pages={state.pages} getLog={() => log.current} />}
+      />
     );
   }
 
@@ -272,7 +331,7 @@ export default function StoryFlow() {
                   type="button"
                   onClick={() => {
                     stop();
-                    void answer(c.label);
+                    void answer(c.label, "choice");
                   }}
                   className="flex flex-col items-center gap-1 rounded-3xl bg-white py-4 text-xl font-bold shadow-md active:scale-95"
                 >
@@ -287,7 +346,7 @@ export default function StoryFlow() {
             <button
               type="button"
               disabled={!allDrawn}
-              onClick={() => dispatch({ type: "openBook" })}
+              onClick={() => void openBook()}
               className="h-28 rounded-full bg-emerald-500 text-3xl font-bold text-white shadow-lg active:scale-95 disabled:bg-zinc-300"
             >
               {allDrawn ? "📖 그림책 보기" : "🖍️ 마지막 그림 그리는 중…"}
@@ -296,12 +355,62 @@ export default function StoryFlow() {
             <PushToTalk
               disabled={!state.drawing || state.waiting}
               mockAnswer={() => mockSpoken(state.mockStep)}
-              onAnswer={(said) => void answer(said)}
+              onAnswer={(said, stt) => void answer(said, "voice", stt)}
               onPressStart={stop}
             />
           )}
         </section>
       </main>
+    </div>
+  );
+}
+
+function pageNumber(pageId: string): number {
+  return Number(pageId.replace("page-", ""));
+}
+
+type AdultToolsProps = {
+  saved: State["saved"];
+  title: string | null;
+  pages: StoryPage[];
+  // 로그는 렌더링 중에 읽지 않고, 내려받을 때 꺼낸다
+  getLog: () => SessionLog | null;
+};
+
+// 끝 페이지 아래의 어른용 도구: 보호자 공유 링크(BOK-03), 세션 기록 내려받기(LOG-01)
+function AdultTools({ saved, title, pages, getLog }: AdultToolsProps) {
+  const [copied, setCopied] = useState(false);
+  const link = saved.status === "saved" ? `${window.location.origin}/book/${saved.id}` : null;
+
+  async function copy() {
+    if (!link) return;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+  }
+
+  function download() {
+    const log = getLog();
+    if (!log) return;
+    const blob = new Blob([JSON.stringify({ title, pages: pages.map((p) => p.text), log }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `bookids-log-${log.startedAt.slice(0, 19).replace(/[:T]/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  return (
+    <div className="mt-4 flex flex-col items-center gap-2 border-t border-zinc-100 pt-4 text-base text-zinc-500">
+      <p className="text-sm">어른용</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button type="button" disabled={!link} onClick={copy} className="rounded-full bg-zinc-100 px-4 py-2 disabled:opacity-50">
+          {saved.status === "saving" ? "저장 중…" : saved.status === "error" ? "저장 실패" : copied ? "✅ 링크 복사됨" : "🔗 공유 링크 복사"}
+        </button>
+        <button type="button" onClick={download} className="rounded-full bg-zinc-100 px-4 py-2">
+          📄 기록 내려받기
+        </button>
+      </div>
+      {link && <p className="text-xs break-all select-text">{link}</p>}
     </div>
   );
 }

@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { pickRecorderMime, requestTranscription } from "@/lib/audio/transcribe-client";
+import type { SttMeta } from "@/lib/story/session-log";
 
 type Props = {
   disabled?: boolean;
   // 서버에 키가 없거나(mock 모드) 마이크를 쓸 수 없을 때 대신 쓰는 대답
   mockAnswer: () => string;
-  onAnswer: (text: string) => void;
+  // stt는 실제 음성인식 결과일 때만 있다 (mock이면 null)
+  onAnswer: (text: string, stt: SttMeta | null) => void;
   // 녹음을 시작할 때 (캐릭터 음성을 멈춰 녹음에 섞이지 않게)
   onPressStart?: () => void;
 };
@@ -55,7 +57,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     setState("thinking");
     timerRef.current = setTimeout(() => {
       setState("idle");
-      onAnswer(mockAnswer());
+      onAnswer(mockAnswer(), null);
     }, 700);
   }
 
@@ -134,7 +136,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
         retry("잘 못 들었어. 다시 말해 줄래?");
       } else {
         setState("idle");
-        onAnswer(result.text);
+        onAnswer(result.text, { confidence: result.confidence, ms: result.ms });
       }
     } catch (error) {
       console.error(error);

@@ -10,10 +10,12 @@ type Props = {
   drawing: string;
   pages: StoryPage[];
   onExit: () => void;
+  // 끝 페이지 아래에 놓을 어른용 도구 (공유 링크, 기록 내려받기)
+  extras?: React.ReactNode;
 };
 
 // 완성 그림책 (BOK-01): 표지 → 본문 페이지 → 끝
-export default function BookViewer({ title, drawing, pages, onExit }: Props) {
+export default function BookViewer({ title, drawing, pages, onExit, extras }: Props) {
   const [index, setIndex] = useState(0);
   const last = pages.length + 1; // 0: 표지, 1..n: 본문, n+1: 끝
   const page = pages[index - 1];
@@ -53,6 +55,7 @@ export default function BookViewer({ title, drawing, pages, onExit }: Props) {
                   🏠 처음으로
                 </button>
               </div>
+              {extras}
             </div>
           )}
         </article>

@@ -8,8 +8,8 @@ type Props = {
   disabled?: boolean;
   // 서버에 키가 없거나(mock 모드) 마이크를 쓸 수 없을 때 대신 쓰는 대답
   mockAnswer: () => string;
-  // stt는 실제 음성인식 결과일 때만 있다 (mock이면 null)
-  onAnswer: (text: string, stt: SttMeta | null) => void;
+  // stt는 실제 음성인식 결과일 때만 있다 (mock이면 null). releasedAt은 손을 뗀 시각 (지연 측정용)
+  onAnswer: (text: string, stt: SttMeta | null, releasedAt: number) => void;
   // 녹음을 시작할 때 (캐릭터 음성을 멈춰 녹음에 섞이지 않게)
   onPressStart?: () => void;
 };
@@ -57,7 +57,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     setState("thinking");
     timerRef.current = setTimeout(() => {
       setState("idle");
-      onAnswer(mockAnswer(), null);
+      onAnswer(mockAnswer(), null, releasedAtRef.current);
     }, 700);
   }
 
@@ -136,7 +136,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
         retry("잘 못 들었어. 다시 말해 줄래?");
       } else {
         setState("idle");
-        onAnswer(result.text, { confidence: result.confidence, ms: result.ms });
+        onAnswer(result.text, { confidence: result.confidence, ms: result.ms }, releasedAtRef.current);
       }
     } catch (error) {
       console.error(error);

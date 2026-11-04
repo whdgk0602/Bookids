@@ -1,4 +1,4 @@
-import { llmConfigured } from "@/lib/ai/gemini";
+import { turnLlmConfigured } from "@/lib/ai/llm";
 import { nextTurn } from "@/lib/story/engine";
 import type { TurnRequest } from "@/lib/story/types";
 
@@ -7,7 +7,7 @@ const MAX_PAGES = 20;
 
 // 아이 대답을 받아 되받기·그림책 문장·다음 질문을 돌려준다 (DLG-01~04)
 export async function POST(request: Request) {
-  if (!llmConfigured()) return Response.json({ mode: "mock" });
+  if (!turnLlmConfigured()) return Response.json({ mode: "mock" });
 
   const body = (await request.json()) as Partial<TurnRequest>;
   if (!isTurnRequest(body)) {
@@ -15,8 +15,8 @@ export async function POST(request: Request) {
   }
 
   const started = performance.now();
-  const { result, usage } = await nextTurn(body);
-  return Response.json({ mode: "live", result, usage, ms: Math.round(performance.now() - started) });
+  const { result, usage, provider } = await nextTurn(body);
+  return Response.json({ mode: "live", result, usage, provider, ms: Math.round(performance.now() - started) });
 }
 
 function isTurnRequest(b: Partial<TurnRequest>): b is TurnRequest {

@@ -5,7 +5,7 @@ import type { AiTurn, Choice, Scene, TurnResult } from "./types";
 // 순서: 첫 문장 → (질문 → 대답) 반복 → 마무리
 
 export const MOCK_TITLE = "토끼와 배고픈 곰";
-export const MOCK_DRAWING = "/sample/drawing.svg";
+// 시나리오는 토끼 샘플 그림(/sample/drawing.svg)에 맞춰져 있다
 
 type KidAnswer = {
   text: string;

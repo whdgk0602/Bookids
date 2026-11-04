@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tunnel": "npx --yes cloudflared tunnel --url http://localhost:3000"
   },
   "dependencies": {
     "next": "16.4.3",

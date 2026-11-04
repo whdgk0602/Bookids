@@ -1,12 +1,12 @@
 import "server-only";
 
 import { generateJson, imagePart, type JsonSchema, type Usage } from "@/lib/ai/gemini";
+import { generateTurnJson } from "@/lib/ai/llm";
 import { isUnsafe } from "./safety";
 import { decide, type ScaffoldDecision } from "./scaffold";
 import type { AiTurn, Choice, DrawingInfo, QuestionType, ScaffoldStage, Scene, TurnRequest, TurnResult } from "./types";
 
-// 대화는 빠른 모델(되받기 2초 이내 목표), 그림 인식은 조금 더 똑똑한 모델
-export const TURN_MODEL = "gemini-3.5-flash-lite";
+// 그림 인식은 이미지를 읽을 수 있는 Gemini. 대화 모델은 src/lib/ai/llm.ts에서 고른다
 export const VISION_MODEL = "gemini-3.5-flash";
 
 const CHARACTER = `너는 만 4~5세 아이와 함께 그림책을 만드는 여우 캐릭터 "토리"야.
@@ -112,6 +112,7 @@ const ENCOURAGEMENTS = [
   "괜찮아, 토리가 도와줄게.",
 ];
 const GENTLE_CLOSING = "오늘은 여기까지 해 볼까? 이야기를 함께 만들어 줘서 고마워!";
+const KID_ENDED_CLOSING = "그래, 이야기 끝! 멋진 이야기를 함께 만들어 줘서 고마워!";
 
 const SCENE_COLORS: [string, string][] = [
   ["#d9f99d", "#86efac"],
@@ -162,29 +163,31 @@ function buildTurnPrompt(req: TurnRequest, decision: ScaffoldDecision): string {
   return `${lines.join("\n\n")}\n\n[할 일]\n${tasks.map((t) => `- ${t}`).join("\n")}`;
 }
 
-export async function nextTurn(req: TurnRequest): Promise<{ result: TurnResult; usage: Usage | null }> {
+export async function nextTurn(req: TurnRequest): Promise<{ result: TurnResult; usage: Usage | null; provider: string | null }> {
   // 부적절한 말은 이야기에 넣지 않고, 같은 질문을 다시 한다 (SAF-01)
   if (isUnsafe(req.answer)) {
     const turn = currentTurn(req);
     return {
       result: { echo: "음, 다른 말로 이야기해 볼까?", page: null, next: turn, done: false, title: null, scaffold: req.scaffold },
       usage: null,
+      provider: null,
     };
   }
 
   const decision = decide(req.scaffold, req.answer);
   let output: TurnOutput;
   let usage: Usage | null = null;
+  let provider: string | null = null;
   try {
-    const res = await generateJson<TurnOutput>({
-      model: TURN_MODEL,
+    const res = await generateTurnJson<TurnOutput>({
       system: CHARACTER,
-      parts: [{ text: buildTurnPrompt(req, decision) }],
+      prompt: buildTurnPrompt(req, decision),
       schema: TURN_SCHEMA,
       temperature: 0.8,
     });
     output = res.data;
     usage = res.usage;
+    provider = res.provider;
   } catch (error) {
     console.error(error);
     output = fallbackOutput(req, decision);
@@ -194,7 +197,7 @@ export async function nextTurn(req: TurnRequest): Promise<{ result: TurnResult; 
     output = fallbackOutput(req, decision);
   }
 
-  return { result: toResult(req, decision, output), usage };
+  return { result: toResult(req, decision, output), usage, provider };
 }
 
 // 대화가 한 번 오갈 때마다 다음 문장으로 넘어가 연달아 같은 말을 하지 않는다
@@ -243,7 +246,13 @@ function toResult(req: TurnRequest, decision: ScaffoldDecision, out: TurnOutput)
   }
 
   return {
-    echo: decision.makesPage ? out.echo.trim() || "그랬구나!" : decision.done ? GENTLE_CLOSING : encourage(req),
+    echo: decision.makesPage
+      ? out.echo.trim() || "그랬구나!"
+      : decision.done
+        ? decision.kind === "end"
+          ? KID_ENDED_CLOSING
+          : GENTLE_CLOSING
+        : encourage(req),
     page,
     next,
     done: decision.done,

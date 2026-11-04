@@ -17,6 +17,25 @@ describe("classifyAnswer", () => {
   });
 });
 
+describe("끝내기 (DLG-04)", () => {
+  it.each(["끝", "끝!", "끝이야", "끝났어", "이제 끝", "그만할래", "다 했어"])("'%s'는 끝내기", (t) => {
+    expect(classifyAnswer(t)).toBe("end");
+  });
+
+  it("'끝까지 달렸어'처럼 내용이 있으면 끝내기가 아니다", () => {
+    expect(classifyAnswer("끝까지 달렸어")).toBe("ok");
+  });
+
+  it("페이지가 있으면 바로 마무리하고, 페이지를 만들지 않는다", () => {
+    const state: ScaffoldState = { type: "감정", stage: "open", weakStreak: 0, pages: 2 };
+    expect(decide(state, "끝")).toMatchObject({ kind: "end", done: true, makesPage: false });
+  });
+
+  it("아직 페이지가 없으면 끝내지 않는다", () => {
+    expect(decide(INITIAL_SCAFFOLD, "끝")).toMatchObject({ done: false, makesPage: false });
+  });
+});
+
 describe("decide", () => {
   it("한 번 '몰라'는 같은 단계로 다시 묻고 페이지를 만들지 않는다", () => {
     const d = decide(INITIAL_SCAFFOLD, "몰라");

@@ -10,6 +10,7 @@ const turn = (answer: string, extra: Partial<TurnLog> = {}): TurnLog => ({
   via: "voice",
   stt: { confidence: 0.9, ms: 400 },
   turnMs: 1000,
+  echoMs: 1600,
   usage: { inputTokens: 100, outputTokens: 20, thoughtTokens: 0 },
   echo: "e",
   madePage: !!answer,
@@ -19,7 +20,7 @@ const turn = (answer: string, extra: Partial<TurnLog> = {}): TurnLog => ({
 describe("summarize", () => {
   it("발화량·무응답·평균 시간·토큰을 센다", () => {
     const log = newSessionLog();
-    log.turns.push(turn("토끼가 숲에 갔어"), turn(""), turn("곰", { stt: { confidence: 0.5, ms: 600 }, turnMs: 2000 }));
+    log.turns.push(turn("토끼가 숲에 갔어"), turn(""), turn("곰", { stt: { confidence: 0.5, ms: 600 }, turnMs: 2000, echoMs: 3400 }));
     log.illustrations.push({ page: 1, ms: 4000, ok: true }, { page: 2, ms: null, ok: false });
 
     expect(summarize(log)).toEqual({
@@ -29,6 +30,8 @@ describe("summarize", () => {
       noAnswerTurns: 1,
       avgSttMs: 467,
       avgTurnMs: 1333,
+      avgEchoMs: 2200,
+      slowEchoTurns: 1,
       avgIllustrationMs: 4000,
       failedIllustrations: 1,
       tokens: 360,

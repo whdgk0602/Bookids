@@ -15,7 +15,7 @@ export function pickRecorderMime(): { mimeType: string; ext: string } | null {
 export async function requestTranscription(audio: Blob, ext: string): Promise<SttResponse> {
   const form = new FormData();
   form.append("audio", audio, `speech.${ext}`);
-  const res = await fetch("/api/stt", { method: "POST", body: form });
+  const res = await fetch("/api/stt", { method: "POST", body: form, signal: AbortSignal.timeout(30_000) });
   if (!res.ok) throw new Error(`STT ${res.status}`);
   return res.json();
 }

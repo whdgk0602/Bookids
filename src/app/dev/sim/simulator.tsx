@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Usage } from "@/lib/ai/gemini";
 import { toImagePayload } from "@/lib/image/to-payload";
 import { requestDescribe, requestTurn } from "@/lib/story/client";
-import { MOCK_DRAWING } from "@/lib/story/mock-script";
+import { SAMPLE_DRAWINGS } from "@/lib/story/samples";
 import { INITIAL_SCAFFOLD, type ScaffoldState } from "@/lib/story/scaffold";
 import type { AiTurn, DrawingInfo, TurnResult } from "@/lib/story/types";
 
@@ -17,6 +17,7 @@ type LogEntry = {
   result: TurnResult;
   ms: number;
   usage: Usage | null;
+  provider: string | null;
 };
 
 const FIRST_QUESTION = "어떤 그림을 그렸어? 그림 이야기를 들려줘!";
@@ -37,7 +38,7 @@ export default function Simulator() {
 
   useEffect(() => {
     let cancelled = false;
-    toImagePayload(MOCK_DRAWING)
+    toImagePayload(SAMPLE_DRAWINGS[0].src)
       .then(requestDescribe)
       .then((res) => {
         if (cancelled) return;
@@ -68,7 +69,7 @@ export default function Simulator() {
         scaffold,
       });
       if (res.mode === "mock") throw new Error("서버가 mock 모드입니다");
-      setLog((prev) => [...prev, { asked: current, answer, result: res.result, ms: res.ms, usage: res.usage }]);
+      setLog((prev) => [...prev, { asked: current, answer, result: res.result, ms: res.ms, usage: res.usage, provider: res.provider }]);
       setCurrent(res.result.next);
       setScaffold(res.result.scaffold);
       setDone(res.result.done);
@@ -142,7 +143,7 @@ export default function Simulator() {
               </p>
             )}
             <p className="mt-1 text-xs text-zinc-400">
-              {l.ms}ms
+              {l.ms}ms · {l.provider ?? "대체 문장"}
               {l.usage && ` · 토큰 입력 ${l.usage.inputTokens} / 출력 ${l.usage.outputTokens} / 생각 ${l.usage.thoughtTokens}`}
             </p>
           </li>

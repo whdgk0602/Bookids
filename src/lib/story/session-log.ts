@@ -15,7 +15,10 @@ export type TurnLog = {
   via: "voice" | "choice" | "mock";
   stt: SttMeta | null;
   turnMs: number | null;
+  // 아이가 손을 떼거나 카드를 누른 순간부터 토리의 되받기가 나오기까지 (목표 3초 이내)
+  echoMs: number | null;
   usage: Usage | null;
+  provider?: string | null; // 이 턴을 만든 LLM 공급자 (groq, gemini)
   echo: string;
   madePage: boolean;
 };
@@ -47,6 +50,8 @@ export function summarize(log: SessionLog) {
     noAnswerTurns: log.turns.length - answered.length,
     avgSttMs: avg(log.turns.flatMap((t) => (t.stt ? [t.stt.ms] : []))),
     avgTurnMs: avg(log.turns.flatMap((t) => (t.turnMs !== null ? [t.turnMs] : []))),
+    avgEchoMs: avg(log.turns.flatMap((t) => (t.echoMs != null ? [t.echoMs] : []))),
+    slowEchoTurns: log.turns.filter((t) => t.echoMs != null && t.echoMs > 3000).length,
     avgIllustrationMs: avg(log.illustrations.flatMap((i) => (i.ms !== null ? [i.ms] : []))),
     failedIllustrations: log.illustrations.filter((i) => !i.ok).length,
     tokens: log.turns.reduce((n, t) => n + (t.usage ? t.usage.inputTokens + t.usage.outputTokens + t.usage.thoughtTokens : 0), 0),

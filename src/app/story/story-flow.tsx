@@ -12,8 +12,10 @@ import SceneArt from "@/components/kid/scene-art";
 import { useSpeech } from "@/lib/audio/use-speech";
 import { loadPhoto } from "@/lib/image/load-photo";
 import { toImagePayload } from "@/lib/image/to-payload";
+import { now } from "@/lib/time";
 import { requestDescribe, requestIllustration, requestSaveBook, requestTurn } from "@/lib/story/client";
-import { MOCK_DRAWING, mockSpoken, mockTurn } from "@/lib/story/mock-script";
+import { mockSpoken, mockTurn } from "@/lib/story/mock-script";
+import { SAMPLE_DRAWINGS } from "@/lib/story/samples";
 import { INITIAL_SCAFFOLD, type ScaffoldState } from "@/lib/story/scaffold";
 import { newSessionLog, type SessionLog, type SttMeta } from "@/lib/story/session-log";
 import type { AiTurn, DrawingInfo, ScaffoldStage, StoryPage, TurnResult } from "@/lib/story/types";
@@ -43,7 +45,7 @@ type Action =
   | { type: "described"; info: DrawingInfo }
   | { type: "asked"; said: string }
   | { type: "answered"; said: string; result: TurnResult; pageId: string }
-  | { type: "failed" }
+  | { type: "failed"; offline: boolean }
   | { type: "illustrated"; pageId: string; image?: string }
   | { type: "openBook" }
   | { type: "save"; status: "saving" | "error" }
@@ -74,7 +76,7 @@ function reducer(state: State, action: Action): State {
       return { ...state, phase: "draw" };
     case "pickDrawing":
       return action.src
-        ? { ...state, phase: "start", drawing: action.src, drawingInfo: null }
+        ? { ...state, phase: "start", drawing: action.src, drawingInfo: null, guide: ["멋진 그림이다!", "마이크를 꾹 누른 채로 그림 이야기를 들려줘."] }
         : { ...state, phase: "start" };
     case "described":
       return { ...state, drawingInfo: action.info };
@@ -98,7 +100,11 @@ function reducer(state: State, action: Action): State {
       };
     }
     case "failed":
-      return { ...state, waiting: false, guide: ["앗, 잘 못 들었어.", "다시 한 번 말해 줄래?"] };
+      return {
+        ...state,
+        waiting: false,
+        guide: action.offline ? ["앗, 인터넷이 끊겼나 봐.", "선생님께 알려 줄래?"] : ["앗, 잘 못 들었어.", "다시 한 번 말해 줄래?"],
+      };
     case "illustrated":
       return {
         ...state,
@@ -117,7 +123,8 @@ function reducer(state: State, action: Action): State {
 
 // 삽화 공급자가 없을 때(mock) 그리는 척하는 시간
 const MOCK_ILLUSTRATION_DELAY_MS = 2500;
-const DESCRIBE_WAIT_MS = 4000;
+// 그림 인식이 늦으면 첫 대답을 이만큼만 기다리고 그림 정보 없이 진행한다
+const DESCRIBE_WAIT_MS = 2500;
 
 export default function StoryFlow() {
   const router = useRouter();
@@ -181,7 +188,7 @@ export default function StoryFlow() {
       });
   }
 
-  async function answer(said: string, via: "voice" | "choice", stt: SttMeta | null = null) {
+  async function answer(said: string, via: "voice" | "choice", startedAt: number, stt: SttMeta | null = null) {
     const myEpoch = epoch.current;
     dispatch({ type: "asked", said });
     try {
@@ -207,7 +214,9 @@ export default function StoryFlow() {
         via: res.mode === "live" ? via : "mock",
         stt,
         turnMs: res.mode === "live" ? res.ms : null,
+        echoMs: Math.round(now() - startedAt),
         usage: res.mode === "live" ? res.usage : null,
+        provider: res.mode === "live" ? res.provider : null,
         echo: result.echo,
         madePage: !!result.page,
       });
@@ -217,7 +226,7 @@ export default function StoryFlow() {
       if (result.page) void illustrate(pageId, result.page.sceneDescription, drawingInfo, sceneHistory(state.pages));
     } catch (error) {
       console.error(error);
-      if (epoch.current === myEpoch) dispatch({ type: "failed" });
+      if (epoch.current === myEpoch) dispatch({ type: "failed", offline: !navigator.onLine });
     }
   }
 
@@ -329,9 +338,9 @@ export default function StoryFlow() {
                 <button
                   key={c.label}
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
                     stop();
-                    void answer(c.label, "choice");
+                    void answer(c.label, "choice", e.timeStamp);
                   }}
                   className="flex flex-col items-center gap-1 rounded-3xl bg-white py-4 text-xl font-bold shadow-md active:scale-95"
                 >
@@ -355,7 +364,7 @@ export default function StoryFlow() {
             <PushToTalk
               disabled={!state.drawing || state.waiting}
               mockAnswer={() => mockSpoken(state.mockStep)}
-              onAnswer={(said, stt) => void answer(said, "voice", stt)}
+              onAnswer={(said, stt, releasedAt) => void answer(said, "voice", releasedAt, stt)}
               onPressStart={stop}
             />
           )}
@@ -444,6 +453,7 @@ function DrawingPicker({ drawing, onDraw, onPick }: PickerProps) {
   const albumRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [changing, setChanging] = useState(false);
+  const [samples, setSamples] = useState(false);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -473,19 +483,39 @@ function DrawingPicker({ drawing, onDraw, onPick }: PickerProps) {
     );
   }
 
+  if (samples) {
+    return (
+      <div className="grid grid-cols-3 gap-3">
+        {SAMPLE_DRAWINGS.map((s) => (
+          <button
+            key={s.src}
+            type="button"
+            onClick={() => {
+              onPick(s.src);
+              setSamples(false);
+              setChanging(false);
+            }}
+            className="flex flex-col items-center gap-1 rounded-3xl bg-white p-2 text-lg font-bold shadow-md active:scale-95"
+          >
+            <span className="relative aspect-[4/3] w-full">
+              <Image src={s.src} alt={s.label} fill unoptimized className="object-contain" />
+            </span>
+            {s.label}
+          </button>
+        ))}
+        <button type="button" onClick={() => setSamples(false)} className="col-span-3 justify-self-center rounded-full bg-white px-5 py-2 text-lg shadow-sm">
+          ↩️ 돌아가기
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <PickButton emoji="✏️" label="그리기" onClick={onDraw} />
       <PickButton emoji="📷" label="사진 찍기" disabled={loading} onClick={() => cameraRef.current?.click()} />
       <PickButton emoji="🗂️" label="앨범에서" disabled={loading} onClick={() => albumRef.current?.click()} />
-      <PickButton
-        emoji="🖼️"
-        label="샘플 그림"
-        onClick={() => {
-          onPick(MOCK_DRAWING);
-          setChanging(false);
-        }}
-      />
+      <PickButton emoji="🖼️" label="샘플 그림" onClick={() => setSamples(true)} />
       {/* capture: 태블릿·휴대폰에서 바로 뒤쪽 카메라를 연다 */}
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onFile} hidden />
       <input ref={albumRef} type="file" accept="image/*" onChange={onFile} hidden />

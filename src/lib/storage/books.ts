@@ -1,7 +1,7 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SessionLog } from "@/lib/story/session-log";
 import type { Scene } from "@/lib/story/types";
@@ -86,4 +86,16 @@ export async function readBookFile(id: string, name: string): Promise<{ bytes: B
   } catch {
     return null;
   }
+}
+
+// 저장된 그림책 목록 (최신순). 개발용 기록 화면에서 쓴다
+export async function listBooks(): Promise<StoredBook[]> {
+  let ids: string[];
+  try {
+    ids = (await readdir(ROOT)).filter((id) => ID_PATTERN.test(id));
+  } catch {
+    return [];
+  }
+  const books = await Promise.all(ids.map(getBook));
+  return books.filter((b): b is StoredBook => b !== null).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

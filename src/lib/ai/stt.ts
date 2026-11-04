@@ -38,6 +38,7 @@ export async function transcribe(audio: Blob, filename: string): Promise<SttResu
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
     body: form,
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) {
     throw new Error(`STT 요청 실패 (${res.status}): ${(await res.text()).slice(0, 200)}`);

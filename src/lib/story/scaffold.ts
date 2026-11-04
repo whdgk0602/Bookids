@@ -27,7 +27,8 @@ export type ScaffoldState = {
 
 export const INITIAL_SCAFFOLD: ScaffoldState = { type: "사건", stage: "open", weakStreak: 0, pages: 0 };
 
-export type AnswerKind = "weak" | "ok" | "strong";
+// end: 아이가 "끝"이라고 해서 이야기를 마치고 싶어 함 (DLG-04)
+export type AnswerKind = "weak" | "ok" | "strong" | "end";
 
 export type ScaffoldDecision = {
   kind: AnswerKind;
@@ -42,6 +43,8 @@ export type ScaffoldDecision = {
 // 대답 전체가 이 표현 하나뿐일 때만 해당한다 ("몰라서 곰한테 물어봤어"는 내용 있는 대답)
 const DONT_KNOW = /^(몰라\S*|모르\S*|모름|글쎄\S*|음+|어+|으+|흠+|아니\S*|싫어\S*|안\s*해|그냥)[.!?~…\s]*$/;
 
+const WANTS_TO_END = /^(끝\S*|이제\s*끝\S*|그만\S*|다\s*했어\S*)[.!?~…\s]*$/;
+
 export function countEojeol(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
@@ -51,6 +54,7 @@ export function countEojeol(text: string): number {
 export function classifyAnswer(text: string): AnswerKind {
   const t = text.trim();
   if (!t || DONT_KNOW.test(t)) return "weak";
+  if (WANTS_TO_END.test(t)) return "end";
   return countEojeol(t) >= SCAFFOLD_RULES.strongMinEojeol ? "strong" : "ok";
 }
 
@@ -67,7 +71,12 @@ function nextType(type: QuestionType): QuestionType {
 export function decide(state: ScaffoldState, answer: string): ScaffoldDecision {
   const kind = classifyAnswer(answer);
 
-  if (kind === "weak") {
+  // 아이가 끝내고 싶어 하면 바로 마무리한다. 아직 페이지가 하나도 없으면 그림책을 만들 수 없으니 계속 묻는다
+  if (kind === "end" && state.pages > 0) {
+    return { kind, makesPage: false, done: true, next: { ...state, weakStreak: 0 } };
+  }
+
+  if (kind === "weak" || kind === "end") {
     const weakStreak = state.weakStreak + 1;
     if (weakStreak < SCAFFOLD_RULES.weakStreakToStepDown) {
       // 한 번은 같은 질문을 다르게 물어 본다

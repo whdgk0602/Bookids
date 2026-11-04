@@ -19,7 +19,7 @@ npm run dev                  # PC에서 http://localhost:3000
 
 - `npm run dev:https` — 자체 서명 인증서로 HTTPS 실행. 첫 실행 시 로컬 인증 기관(mkcert)을
   Windows에 설치하는 단계가 있어 **관리자 확인이 필요**하다. 태블릿에서는 인증서 경고가 뜨며 "계속"을 눌러 접속한다.
-- 대안: 터널(cloudflared 등)로 임시 HTTPS 주소를 만들어 접속.
+- 대안: `npm run tunnel` — 임시 HTTPS 주소(`https://….trycloudflare.com`)를 만들어 어느 기기에서나 접속. 켜져 있는 동안은 주소를 아는 누구나 들어올 수 있으니 테스트가 끝나면 바로 끈다.
 
 ## 화면
 
@@ -29,9 +29,10 @@ npm run dev                  # PC에서 http://localhost:3000
 | `/story` | 이야기 만들기 (시작 → 되묻기·삽화 반복 → 완성 그림책) |
 | `/check` | 기기 점검 (보안 연결, 마이크 녹음) |
 | `/book/[id]` | 저장된 그림책 (보호자 공유용 읽기 전용 링크) |
+| `/dev/books` | 저장된 그림책 기록: 응답 시간, 발화량, 실패, 사용량 (팀 내부용) |
 | `/dev/sim` | 대화 엔진 시뮬레이터: 글자로 대답하며 질문 품질 확인, 로그 내려받기 (실제 아이 데이터 입력 금지) |
 
-기능 명세는 [docs/spec.md](docs/spec.md) 참고.
+기능 명세는 [docs/spec.md](docs/spec.md), 시연 진행·점검은 [docs/demo.md](docs/demo.md) 참고.
 
 ## 진행 단계
 
@@ -43,4 +44,4 @@ npm run dev                  # PC에서 http://localhost:3000
 - [x] 단계 3. 대화 엔진: 그림 인식, 되받기·질문 생성(Gemini), 비계 규칙(코드), 캐릭터 음성(브라우저 TTS), 기본 안전 필터, 시뮬레이터
 - [x] 단계 4. 삽화 생성: Cloudflare Workers AI(FLUX.2 klein 4B, 무료 하루 약 80~100장), 아이 그림 참조, 장면 설명으로 인물 생김새 유지
 - [x] 단계 5. 전체 연결·그림책 완성: 그림책 저장(로컬 `data/books`, git 제외), 공유 링크, 세션 로그(LOG-01) 기록·내려받기
-- [ ] 단계 6. 다듬기·시연 준비
+- [x] 단계 6. 다듬기·시연 준비: 요청 시간 제한, 대화 공급자 자동 전환(Groq → Gemini), 되받기 지연 측정, 기록 화면, 샘플 그림 3종, 터널, 시연 문서

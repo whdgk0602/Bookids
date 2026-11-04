@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="400" height="300" fill="#fffdf7"/>
+  <!-- 화산 -->
+  <path d="M280 262l40-110h30l40 110" stroke="#78350f" stroke-width="6" fill="#d6d3d1"/>
+  <path d="M322 152c-6-18 8-24 4-40M342 152c8-16-4-26 6-40" stroke="#f97316" stroke-width="6"/>
+  <!-- 땅 -->
+  <path d="M10 262c70-8 140 6 220-2s120 6 160 0" stroke="#65a30d" stroke-width="7"/>
+  <!-- 공룡 -->
+  <path d="M60 230c-10-40 10-80 60-86 30-4 44-30 50-60 4-20 40-20 44 4 4 20-16 34-36 38-6 30 4 60 40 74 30 12 50 6 70-6" stroke="#15803d" stroke-width="7" fill="#86efac"/>
+  <path d="M70 160l-10-16 22 4 0-20 18 14 8-20 12 18" stroke="#15803d" stroke-width="5" fill="#bbf7d0"/>
+  <circle cx="196" cy="92" r="5" fill="#1f2937"/>
+  <path d="M206 108q-8 6-16 2" stroke="#1f2937" stroke-width="4"/>
+  <path d="M100 232v26M140 236v24M190 236v22" stroke="#15803d" stroke-width="9"/>
+  <!-- 알 -->
+  <ellipse cx="240" cy="244" rx="14" ry="18" stroke="#a16207" stroke-width="5" fill="#fef3c7"/>
+  <path d="M230 240l6-6 6 6 6-6" stroke="#a16207" stroke-width="3"/>
+</svg>

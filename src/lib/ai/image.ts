@@ -4,8 +4,8 @@ import "server-only";
 // 이 파일에 함수를 하나 추가하고 generateIllustration의 분기에 넣는다.
 
 export type IllustrationRequest = {
-  // 아이 원본 그림 (data URL). 그림체를 살리기 위한 참조 이미지
-  reference: string;
+  // 아이 원본 그림 (data URL). 그림체를 살리기 위한 참조 이미지. 말로만 만들 때는 없다
+  reference: string | null;
   prompt: string;
   seed: number;
 };
@@ -52,7 +52,7 @@ async function cloudflare(req: IllustrationRequest): Promise<string> {
   form.append("width", String(WIDTH));
   form.append("height", String(HEIGHT));
   form.append("seed", String(req.seed));
-  form.append("input_image_0", dataUrlToBlob(req.reference), "reference.jpg");
+  if (req.reference) form.append("input_image_0", dataUrlToBlob(req.reference), "reference.jpg");
 
   const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`, {
     method: "POST",
@@ -85,6 +85,8 @@ function dataUrlToBlob(dataUrl: string): Blob {
 type OpenAiImageResponse = { data?: { b64_json?: string; media_type?: string }[] };
 
 async function pollinations(req: IllustrationRequest): Promise<string> {
+  // 참조 그림 편집 엔드포인트만 연결해 두었다. 말로만 만든 이야기는 장면 이모지로 대신한다
+  if (!req.reference) throw new Error("pollinations: 참조 그림 없는 생성은 연결하지 않았습니다");
   const res = await fetch("https://gen.pollinations.ai/v1/images/edits", {
     method: "POST",
     headers: {

@@ -23,8 +23,9 @@ async function post<T>(url: string, body: unknown, timeoutMs: number): Promise<T
 }
 
 export const requestSaveBook = (book: {
+  child: string | null;
   title: string;
-  cover: string;
+  cover: string | null;
   pages: { text: string; scene: Scene; image: string | null }[];
   log: SessionLog;
 }) => post<{ id: string }>("/api/books", book, 30_000);
@@ -32,7 +33,7 @@ export const requestSaveBook = (book: {
 export const requestDescribe = (image: string) => post<DescribeResponse>("/api/story/describe", { image }, 30_000);
 export const requestTurn = (req: TurnRequest) => post<TurnResponse>("/api/story/turn", req, 25_000);
 export const requestIllustration = (body: {
-  reference: string;
+  reference: string | null;
   scene: string;
   previousScenes: string[];
   drawing: DrawingInfo | null;

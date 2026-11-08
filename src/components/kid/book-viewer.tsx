@@ -7,7 +7,10 @@ import SceneArt from "./scene-art";
 
 type Props = {
   title: string;
-  drawing: string;
+  // 아이 그림 (표지). 말로만 만든 그림책은 없어서 첫 삽화가 표지를 대신한다
+  drawing: string | null;
+  // 지은이 (아이 별명)
+  author?: string | null;
   pages: StoryPage[];
   onExit: () => void;
   // 끝 페이지 아래에 놓을 어른용 도구 (공유 링크, 기록 내려받기)
@@ -15,7 +18,7 @@ type Props = {
 };
 
 // 완성 그림책 (BOK-01): 표지 → 본문 페이지 → 끝
-export default function BookViewer({ title, drawing, pages, onExit, extras }: Props) {
+export default function BookViewer({ title, drawing, author, pages, onExit, extras }: Props) {
   const [index, setIndex] = useState(0);
   const last = pages.length + 1; // 0: 표지, 1..n: 본문, n+1: 끝
   const page = pages[index - 1];
@@ -30,11 +33,17 @@ export default function BookViewer({ title, drawing, pages, onExit, extras }: Pr
         <article key={index} className="animate-pop-in flex flex-1 flex-col gap-4 rounded-3xl bg-white p-5 shadow-lg sm:p-8">
           {index === 0 && (
             <>
-              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border-4 border-amber-200">
-                <Image src={drawing} alt="아이가 그린 그림" fill unoptimized className="object-contain" />
-              </div>
+              {drawing ? (
+                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border-4 border-amber-200">
+                  <Image src={drawing} alt="아이가 그린 그림" fill unoptimized className="object-contain" />
+                </div>
+              ) : (
+                pages[0] && <SceneArt scene={pages[0].scene} image={pages[0].image} />
+              )}
               <h1 className="text-center text-4xl font-bold">{title}</h1>
-              <p className="text-center text-xl text-zinc-500">글·그림: 우리 아이</p>
+              <p className="text-center text-xl text-zinc-500">
+                {drawing ? "글·그림" : "글"}: {author ?? "우리 아이"}
+              </p>
             </>
           )}
           {page && (

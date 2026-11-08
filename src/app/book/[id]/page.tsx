@@ -24,8 +24,10 @@ async function Book({ params }: Pick<PageProps<"/book/[id]">, "params">) {
   // 세션 로그는 팀 내부용이라 보호자 화면에 보내지 않는다
   return (
     <SharedBook
+      id={id}
       title={book.title}
-      drawing={file(book.cover)}
+      drawing={book.cover ? file(book.cover) : null}
+      author={book.child ?? null}
       pages={book.pages.map((p, i) => ({
         id: `page-${i + 1}`,
         text: p.text,

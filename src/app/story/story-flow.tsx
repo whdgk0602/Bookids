@@ -10,6 +10,7 @@ import GuideBubble from "@/components/kid/guide-bubble";
 import PushToTalk from "@/components/kid/push-to-talk";
 import SceneArt from "@/components/kid/scene-art";
 import { useSpeech } from "@/lib/audio/use-speech";
+import { useChild } from "@/lib/use-child";
 import { loadPhoto } from "@/lib/image/load-photo";
 import { toImagePayload } from "@/lib/image/to-payload";
 import { now } from "@/lib/time";
@@ -26,6 +27,8 @@ type Phase = "start" | "draw" | "talk" | "done" | "book";
 type State = {
   phase: Phase;
   drawing: string | null;
+  // 그림 없이 말로만 만드는 이야기
+  talkOnly: boolean;
   drawingInfo: DrawingInfo | null;
   current: AiTurn | null; // 지금 아이에게 한 질문 (null이면 첫 질문: 그림 이야기)
   guide: string[];
@@ -42,6 +45,7 @@ type State = {
 type Action =
   | { type: "startDrawing" }
   | { type: "pickDrawing"; src: string | null }
+  | { type: "talkOnly"; on: boolean }
   | { type: "described"; info: DrawingInfo }
   | { type: "asked"; said: string }
   | { type: "answered"; said: string; result: TurnResult; pageId: string }
@@ -53,10 +57,12 @@ type Action =
   | { type: "reset" };
 
 const FIRST_QUESTION = "어떤 그림을 그렸어? 그림 이야기를 들려줘!";
+const TALK_FIRST_QUESTION = "어떤 이야기를 만들어 볼까? 누가 나오는지 들려줘!";
 
 const INITIAL: State = {
   phase: "start",
   drawing: null,
+  talkOnly: false,
   drawingInfo: null,
   current: null,
   guide: ["안녕! 나는 여우 토리야.", FIRST_QUESTION],
@@ -76,8 +82,12 @@ function reducer(state: State, action: Action): State {
       return { ...state, phase: "draw" };
     case "pickDrawing":
       return action.src
-        ? { ...state, phase: "start", drawing: action.src, drawingInfo: null, guide: ["멋진 그림이다!", "마이크를 꾹 누른 채로 그림 이야기를 들려줘."] }
+        ? { ...state, phase: "start", drawing: action.src, talkOnly: false, drawingInfo: null, guide: ["멋진 그림이다!", "마이크를 꾹 누른 채로 그림 이야기를 들려줘."] }
         : { ...state, phase: "start" };
+    case "talkOnly":
+      return action.on
+        ? { ...state, drawing: null, talkOnly: true, drawingInfo: null, guide: ["좋아, 말로 이야기를 만들어 보자!", "마이크를 꾹 누른 채로 " + TALK_FIRST_QUESTION] }
+        : { ...state, talkOnly: false, guide: INITIAL.guide };
     case "described":
       return { ...state, drawingInfo: action.info };
     case "asked":
@@ -130,6 +140,9 @@ export default function StoryFlow() {
   const router = useRouter();
   const [state, dispatch] = useReducer(reducer, INITIAL);
   const { speak, stop } = useSpeech();
+  const child = useChild();
+  // 그림 없이 말로만 만들 때 페이지마다 같은 그림체가 나오도록 쓰는 시드
+  const talkSeed = useRef(0);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const describing = useRef<Promise<DrawingInfo | null> | null>(null);
   // AI에 보낼 형태로 바꾼 아이 그림 (그림 인식용 1024px)
@@ -188,6 +201,19 @@ export default function StoryFlow() {
       });
   }
 
+  function startTalkOnly() {
+    dispatch({ type: "talkOnly", on: true });
+    epoch.current++;
+    describing.current = null;
+    payload.current = null;
+    reference.current = null;
+    log.current = { ...newSessionLog(), talkOnly: true };
+    talkSeed.current = Math.floor(Math.random() * 2_000_000_000);
+  }
+
+  // 지금 아이가 대답하는 질문 (첫 질문은 그림으로 시작했는지에 따라 다르다)
+  const askedQuestion = state.current?.question ?? (state.talkOnly ? TALK_FIRST_QUESTION : null);
+
   async function answer(said: string, via: "voice" | "choice", startedAt: number, stt: SttMeta | null = null) {
     const myEpoch = epoch.current;
     dispatch({ type: "asked", said });
@@ -198,7 +224,7 @@ export default function StoryFlow() {
         pages: state.pages.map((p) => p.text),
         scenes: sceneHistory(state.pages),
         history: state.history,
-        question: state.current?.question ?? null,
+        question: askedQuestion,
         answer: said,
         scaffold: state.scaffold,
       });
@@ -207,7 +233,7 @@ export default function StoryFlow() {
       const pageId = `page-${state.pages.length + 1}`;
       log.current?.turns.push({
         at: new Date().toISOString(),
-        question: state.current?.question ?? FIRST_QUESTION,
+        question: askedQuestion ?? FIRST_QUESTION,
         type: state.current?.type ?? null,
         stage: state.current?.stage ?? null,
         answer: said,
@@ -235,9 +261,10 @@ export default function StoryFlow() {
     const fakeDrawing = () =>
       timers.current.push(setTimeout(() => dispatch({ type: "illustrated", pageId }), MOCK_ILLUSTRATION_DELAY_MS));
     try {
-      const ref = await reference.current;
-      if (!ref || !scene) return fakeDrawing();
-      const res = await requestIllustration({ reference: ref, scene, previousScenes, drawing: drawingInfo, seed: seedFrom(ref) });
+      const ref = (await reference.current) ?? null;
+      // 그림을 골랐는데 참조 그림을 못 만들었거나 장면 설명이 없으면 그리는 척만 한다
+      if ((!ref && !state.talkOnly) || !scene) return fakeDrawing();
+      const res = await requestIllustration({ reference: ref, scene, previousScenes, drawing: drawingInfo, seed: ref ? seedFrom(ref) : talkSeed.current });
       if (epoch.current !== myEpoch) return;
       if (res.mode === "mock") return fakeDrawing();
       log.current?.illustrations.push({ page: pageNumber(pageId), ms: res.ms, ok: true });
@@ -263,14 +290,18 @@ export default function StoryFlow() {
   async function openBook() {
     dispatch({ type: "openBook" });
     const myEpoch = epoch.current;
-    const cover = await payload.current?.catch(() => null);
-    if (!cover || !log.current) return dispatch({ type: "save", status: "error" });
+    // 그림 없이 만든 그림책은 표지 그림 없이 저장한다 (첫 삽화가 표지를 대신한다)
+    const cover = payload.current ? await payload.current.catch(() => null) : null;
+    if ((!cover && !state.talkOnly) || !log.current) return dispatch({ type: "save", status: "error" });
     dispatch({ type: "save", status: "saving" });
     try {
       const { id } = await requestSaveBook({
+        child,
         title: state.title ?? "우리가 만든 이야기",
         cover,
-        pages: state.pages.map((p) => ({ text: p.text, scene: p.scene, image: p.image ?? null })),
+        pages: await Promise.all(
+          state.pages.map(async (p) => ({ text: p.text, scene: p.scene, image: p.image ? await toImagePayload(p.image, 1024, 0.75).catch(() => p.image!) : null })),
+        ),
         log: log.current,
       });
       if (epoch.current === myEpoch) dispatch({ type: "saved", id });
@@ -280,14 +311,15 @@ export default function StoryFlow() {
     }
   }
 
-  if (state.phase === "book" && state.drawing) {
+  if (state.phase === "book") {
     return (
       <BookViewer
         title={state.title ?? "우리가 만든 이야기"}
         drawing={state.drawing}
+        author={child}
         pages={state.pages}
         onExit={() => router.push("/")}
-        extras={<AdultTools saved={state.saved} title={state.title} pages={state.pages} getLog={() => log.current} />}
+        extras={<AdultTools saved={state.saved} />}
       />
     );
   }
@@ -310,7 +342,17 @@ export default function StoryFlow() {
         {/* 왼쪽: 그림 또는 지금 페이지 */}
         <section className="flex flex-col gap-3">
           {state.phase === "start" ? (
-            <DrawingPicker drawing={state.drawing} onDraw={() => dispatch({ type: "startDrawing" })} onPick={pickDrawing} />
+            state.talkOnly ? (
+              <div className="animate-pop-in flex aspect-[4/3] w-full flex-col items-center justify-center gap-4 rounded-3xl bg-white shadow-md">
+                <span className="text-8xl">🗣️</span>
+                <p className="text-2xl font-bold">말로 만드는 이야기</p>
+                <button type="button" onClick={() => dispatch({ type: "talkOnly", on: false })} className="rounded-full bg-zinc-100 px-5 py-2 text-lg">
+                  🖍️ 그림으로 시작할래
+                </button>
+              </div>
+            ) : (
+              <DrawingPicker drawing={state.drawing} onDraw={() => dispatch({ type: "startDrawing" })} onPick={pickDrawing} onTalkOnly={startTalkOnly} />
+            )
           ) : (
             latestPage && (
               <div key={`${latestPage.id}-${latestPage.status}`} className="animate-pop-in flex flex-col gap-3 rounded-3xl bg-white p-4 shadow-md">
@@ -362,7 +404,7 @@ export default function StoryFlow() {
             </button>
           ) : (
             <PushToTalk
-              disabled={!state.drawing || state.waiting}
+              disabled={(!state.drawing && !state.talkOnly) || state.waiting}
               mockAnswer={() => mockSpoken(state.mockStep)}
               onAnswer={(said, stt, releasedAt) => void answer(said, "voice", releasedAt, stt)}
               onPressStart={stop}
@@ -378,16 +420,9 @@ function pageNumber(pageId: string): number {
   return Number(pageId.replace("page-", ""));
 }
 
-type AdultToolsProps = {
-  saved: State["saved"];
-  title: string | null;
-  pages: StoryPage[];
-  // 로그는 렌더링 중에 읽지 않고, 내려받을 때 꺼낸다
-  getLog: () => SessionLog | null;
-};
-
-// 끝 페이지 아래의 어른용 도구: 보호자 공유 링크(BOK-03), 세션 기록 내려받기(LOG-01)
-function AdultTools({ saved, title, pages, getLog }: AdultToolsProps) {
+// 끝 페이지 아래의 어른용 도구: 보호자 공유 링크(BOK-03), 그림책 내려받기(PDF)
+// 세션 기록은 보호자·선생님 화면(/dashboard)에서 본다
+function AdultTools({ saved }: { saved: State["saved"] }) {
   const [copied, setCopied] = useState(false);
   const link = saved.status === "saved" ? `${window.location.origin}/book/${saved.id}` : null;
 
@@ -397,17 +432,6 @@ function AdultTools({ saved, title, pages, getLog }: AdultToolsProps) {
     setCopied(true);
   }
 
-  function download() {
-    const log = getLog();
-    if (!log) return;
-    const blob = new Blob([JSON.stringify({ title, pages: pages.map((p) => p.text), log }, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `bookids-log-${log.startedAt.slice(0, 19).replace(/[:T]/g, "-")}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
   return (
     <div className="mt-4 flex flex-col items-center gap-2 border-t border-zinc-100 pt-4 text-base text-zinc-500">
       <p className="text-sm">어른용</p>
@@ -415,9 +439,13 @@ function AdultTools({ saved, title, pages, getLog }: AdultToolsProps) {
         <button type="button" disabled={!link} onClick={copy} className="rounded-full bg-zinc-100 px-4 py-2 disabled:opacity-50">
           {saved.status === "saving" ? "저장 중…" : saved.status === "error" ? "저장 실패" : copied ? "✅ 링크 복사됨" : "🔗 공유 링크 복사"}
         </button>
-        <button type="button" onClick={download} className="rounded-full bg-zinc-100 px-4 py-2">
-          📄 기록 내려받기
-        </button>
+        {saved.status === "saved" ? (
+          <a href={`/book/${saved.id}/print`} target="_blank" rel="noopener" className="rounded-full bg-zinc-100 px-4 py-2">
+            📥 그림책 내려받기 (PDF)
+          </a>
+        ) : (
+          <span className="rounded-full bg-zinc-100 px-4 py-2 opacity-50">📥 그림책 내려받기 (PDF)</span>
+        )}
       </div>
       {link && <p className="text-xs break-all select-text">{link}</p>}
     </div>
@@ -445,10 +473,11 @@ type PickerProps = {
   drawing: string | null;
   onDraw: () => void;
   onPick: (src: string) => void;
+  onTalkOnly: () => void;
 };
 
 // 그림 고르기: 직접 그리기(INP-01), 종이 그림 촬영·앨범(INP-02), 샘플
-function DrawingPicker({ drawing, onDraw, onPick }: PickerProps) {
+function DrawingPicker({ drawing, onDraw, onPick, onTalkOnly }: PickerProps) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const albumRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
@@ -516,6 +545,13 @@ function DrawingPicker({ drawing, onDraw, onPick }: PickerProps) {
       <PickButton emoji="📷" label="사진 찍기" disabled={loading} onClick={() => cameraRef.current?.click()} />
       <PickButton emoji="🗂️" label="앨범에서" disabled={loading} onClick={() => albumRef.current?.click()} />
       <PickButton emoji="🖼️" label="샘플 그림" onClick={() => setSamples(true)} />
+      <button
+        type="button"
+        onClick={onTalkOnly}
+        className="col-span-2 flex items-center justify-center gap-3 rounded-3xl bg-white py-4 text-xl font-bold shadow-md active:scale-95"
+      >
+        <span className="text-4xl">🗣️</span>그림 없이 말로만 할래
+      </button>
       {/* capture: 태블릿·휴대폰에서 바로 뒤쪽 카메라를 연다 */}
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={onFile} hidden />
       <input ref={albumRef} type="file" accept="image/*" onChange={onFile} hidden />

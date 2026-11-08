@@ -18,15 +18,18 @@ export type StoredPage = { text: string; scene: Scene; image: string | null };
 export type StoredBook = {
   id: string;
   createdAt: string;
+  // 아이 별명 (계정이 생기기 전 임시 구분). 예전에 저장된 그림책에는 없다
+  child?: string | null;
   title: string;
-  cover: string; // 파일 이름
+  cover: string | null; // 파일 이름. 그림 없이 말로만 만든 그림책은 없을 수 있다
   pages: StoredPage[];
   log: SessionLog;
 };
 
 export type NewBook = {
+  child: string | null;
   title: string;
-  cover: string; // data URL
+  cover: string | null; // data URL
   pages: { text: string; scene: Scene; image: string | null }[]; // image는 data URL
   log: SessionLog;
 };
@@ -44,9 +47,13 @@ export async function saveBook(book: NewBook): Promise<string> {
   const id = randomBytes(12).toString("base64url");
   const store = fileStore();
 
-  const cover = decode(book.cover);
-  const coverName = `cover.${cover.ext}`;
-  const writes = [store.write(id, coverName, cover.bytes, TYPE[cover.ext])];
+  const writes: Promise<void>[] = [];
+  let coverName: string | null = null;
+  if (book.cover) {
+    const cover = decode(book.cover);
+    coverName = `cover.${cover.ext}`;
+    writes.push(store.write(id, coverName, cover.bytes, TYPE[cover.ext]));
+  }
 
   const pages: StoredPage[] = book.pages.map((page, i) => {
     let image: string | null = null;
@@ -60,7 +67,7 @@ export async function saveBook(book: NewBook): Promise<string> {
   await Promise.all(writes);
 
   // book.json을 마지막에 쓴다: 이 파일이 있으면 그림 파일도 모두 저장된 것
-  const stored: StoredBook = { id, createdAt: new Date().toISOString(), title: book.title, cover: coverName, pages, log: book.log };
+  const stored: StoredBook = { id, createdAt: new Date().toISOString(), child: book.child, title: book.title, cover: coverName, pages, log: book.log };
   await store.write(id, "book.json", Buffer.from(JSON.stringify(stored, null, 2)), "application/json");
   return id;
 }

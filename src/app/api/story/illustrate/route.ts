@@ -20,7 +20,9 @@ export async function POST(request: Request) {
   if (!imageConfigured()) return Response.json({ mode: "mock" });
 
   const { reference, scene, previousScenes, drawing, seed } = (await request.json()) as Body;
-  if (!isImage(reference)) {
+  // 참조 그림이 없으면 (말로만 만든 이야기) 장면 설명만으로 그린다
+  const ref = reference === null ? null : isImage(reference) ? reference : undefined;
+  if (ref === undefined) {
     return Response.json({ error: "참조 그림이 올바르지 않습니다" }, { status: 400 });
   }
   if (typeof scene !== "string" || !scene.trim() || scene.length > MAX_SCENE_CHARS) {
@@ -34,8 +36,8 @@ export async function POST(request: Request) {
   try {
     const scenes = Array.isArray(previousScenes) ? previousScenes.filter((s): s is string => typeof s === "string").slice(-3) : [];
     const image = await generateIllustration({
-      reference,
-      prompt: buildIllustrationPrompt(scene, { drawing: drawing ?? null, previousScenes: scenes }),
+      reference: ref,
+      prompt: buildIllustrationPrompt(scene, { drawing: drawing ?? null, previousScenes: scenes, hasReference: ref !== null }),
       seed: typeof seed === "number" ? seed : 42,
     });
     return Response.json({ mode: "live", image, ms: Math.round(performance.now() - started) });

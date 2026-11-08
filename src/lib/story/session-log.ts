@@ -30,6 +30,8 @@ export type SessionLog = {
   startedAt: string;
   finishedAt: string | null;
   drawing: { summary: string; elements: string[]; describeMs: number | null } | null;
+  // 그림 없이 말로만 만든 이야기
+  talkOnly?: boolean;
   turns: TurnLog[];
   illustrations: IllustrationLog[];
 };

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { listBooks } from "@/lib/storage/books";
 import { summarize } from "@/lib/story/session-log";
@@ -28,6 +29,8 @@ export default function BooksReportPage() {
 }
 
 async function BookTable() {
+  // 저장 목록은 계속 바뀌므로 빌드 때 고정하지 않고 요청마다 읽는다
+  await connection();
   const books = await listBooks();
   if (!books.length) return <p className="text-zinc-500">아직 저장된 그림책이 없습니다.</p>;
 

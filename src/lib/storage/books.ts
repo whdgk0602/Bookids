@@ -1,16 +1,13 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import type { SessionLog } from "@/lib/story/session-log";
 import type { Scene } from "@/lib/story/types";
+import { fileStore } from "./file-store";
 
-// 그림책 저장소. 프로토타입은 로컬 디스크(data/books, git 제외)에 둔다.
-// 배포할 때는 이 파일만 클라우드 저장소로 바꾼다.
+// 그림책 저장소. 파일을 어디에 두는지는 file-store.ts가 정한다
+// (로컬: data/books 디스크, 버셀: Vercel Blob 비공개 저장소)
 // ⚠️ 아동 그림이 들어가므로 실제 아이 데이터는 저장하지 않는다 (동의·보관 정책이 생기기 전까지)
-
-const ROOT = path.join(process.cwd(), "data", "books");
 
 // 공유 링크로 쓰므로 추측할 수 없어야 한다 (BOK-03): 16자 = 96비트
 const ID_PATTERN = /^[A-Za-z0-9_-]{16}$/;
@@ -45,33 +42,34 @@ function decode(dataUrl: string): { bytes: Buffer; ext: string } {
 
 export async function saveBook(book: NewBook): Promise<string> {
   const id = randomBytes(12).toString("base64url");
-  const dir = path.join(ROOT, id);
-  await mkdir(dir, { recursive: true });
+  const store = fileStore();
 
   const cover = decode(book.cover);
   const coverName = `cover.${cover.ext}`;
-  await writeFile(path.join(dir, coverName), cover.bytes);
+  const writes = [store.write(id, coverName, cover.bytes, TYPE[cover.ext])];
 
-  const pages: StoredPage[] = [];
-  for (const [i, page] of book.pages.entries()) {
+  const pages: StoredPage[] = book.pages.map((page, i) => {
     let image: string | null = null;
     if (page.image) {
       const img = decode(page.image);
       image = `page-${i + 1}.${img.ext}`;
-      await writeFile(path.join(dir, image), img.bytes);
+      writes.push(store.write(id, image, img.bytes, TYPE[img.ext]));
     }
-    pages.push({ text: page.text, scene: page.scene, image });
-  }
+    return { text: page.text, scene: page.scene, image };
+  });
+  await Promise.all(writes);
 
+  // book.json을 마지막에 쓴다: 이 파일이 있으면 그림 파일도 모두 저장된 것
   const stored: StoredBook = { id, createdAt: new Date().toISOString(), title: book.title, cover: coverName, pages, log: book.log };
-  await writeFile(path.join(dir, "book.json"), JSON.stringify(stored, null, 2));
+  await store.write(id, "book.json", Buffer.from(JSON.stringify(stored, null, 2)), "application/json");
   return id;
 }
 
 export async function getBook(id: string): Promise<StoredBook | null> {
   if (!ID_PATTERN.test(id)) return null;
   try {
-    return JSON.parse(await readFile(path.join(ROOT, id, "book.json"), "utf8")) as StoredBook;
+    const bytes = await fileStore().read(id, "book.json");
+    return bytes ? (JSON.parse(bytes.toString("utf8")) as StoredBook) : null;
   } catch {
     return null;
   }
@@ -82,7 +80,8 @@ export async function readBookFile(id: string, name: string): Promise<{ bytes: B
   const match = FILE_PATTERN.exec(name);
   if (!ID_PATTERN.test(id) || !match) return null;
   try {
-    return { bytes: await readFile(path.join(ROOT, id, name)), type: TYPE[match[2]] };
+    const bytes = await fileStore().read(id, name);
+    return bytes ? { bytes, type: TYPE[match[2]] } : null;
   } catch {
     return null;
   }
@@ -92,8 +91,9 @@ export async function readBookFile(id: string, name: string): Promise<{ bytes: B
 export async function listBooks(): Promise<StoredBook[]> {
   let ids: string[];
   try {
-    ids = (await readdir(ROOT)).filter((id) => ID_PATTERN.test(id));
-  } catch {
+    ids = (await fileStore().listIds()).filter((id) => ID_PATTERN.test(id));
+  } catch (error) {
+    console.error(error);
     return [];
   }
   const books = await Promise.all(ids.map(getBook));

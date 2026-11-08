@@ -12,6 +12,7 @@
     "tunnel": "npx --yes cloudflared tunnel --url http://localhost:3000"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.2",
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"

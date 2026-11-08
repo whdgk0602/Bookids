@@ -34,7 +34,8 @@ async function BookTable() {
   const books = await listBooks();
   if (!books.length) return <p className="text-zinc-500">아직 저장된 그림책이 없습니다.</p>;
 
-  const rows = books.map((b) => ({ book: b, s: summarize(b.log) }));
+  // 형식이 맞지 않는 기록은 건너뛴다 (예전 형식, 시험용 저장)
+  const rows = books.filter((b) => Array.isArray(b.log?.turns) && Array.isArray(b.log?.illustrations)).map((b) => ({ book: b, s: summarize(b.log) }));
   const ms = (v: number | null) => (v === null ? "-" : `${(v / 1000).toFixed(1)}초`);
 
   return (

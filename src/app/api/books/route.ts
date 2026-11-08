@@ -22,6 +22,10 @@ export async function POST(request: Request) {
 
 const isImage = (v: unknown): v is string => typeof v === "string" && v.startsWith("data:image/") && v.length <= MAX_IMAGE_CHARS;
 
+// 기록 화면이 요약할 수 있는 형태인지 (형식이 틀린 기록 하나가 기록 화면 전체를 깨뜨리지 않도록)
+const isLog = (log: unknown): boolean =>
+  typeof log === "object" && log !== null && Array.isArray((log as { turns?: unknown }).turns) && Array.isArray((log as { illustrations?: unknown }).illustrations);
+
 function isNewBook(b: Partial<NewBook>): b is NewBook {
   return (
     typeof b.title === "string" &&
@@ -31,7 +35,6 @@ function isNewBook(b: Partial<NewBook>): b is NewBook {
     b.pages.length > 0 &&
     b.pages.length <= MAX_PAGES &&
     b.pages.every((p) => typeof p.text === "string" && p.text.length <= MAX_TEXT_CHARS && typeof p.scene === "object" && (p.image === null || isImage(p.image))) &&
-    typeof b.log === "object" &&
-    b.log !== null
+    isLog(b.log)
   );
 }

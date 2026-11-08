@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import SceneArt from "@/components/kid/scene-art";
 import { getBook } from "@/lib/storage/books";
@@ -19,6 +20,8 @@ export default function PrintPage({ params }: PageProps<"/book/[id]/print">) {
 }
 
 async function PrintBook({ params }: Pick<PageProps<"/book/[id]/print">, "params">) {
+  // 저장소(Blob)를 읽을 때 현재 시각을 쓰므로 빌드 때가 아니라 요청마다 그린다
+  await connection();
   const { id } = await params;
   const book = await getBook(id);
   if (!book) notFound();

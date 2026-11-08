@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { pickRecorderMime, requestTranscription } from "@/lib/audio/transcribe-client";
+import { isSttMock, pickRecorderMime, requestTranscription } from "@/lib/audio/transcribe-client";
 import type { SttMeta } from "@/lib/story/session-log";
 
 type Props = {
@@ -53,6 +53,14 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     timerRef.current = setTimeout(() => setState("idle"), RETRY_MESSAGE_MS);
   }
 
+  // 마이크를 쓸 수 없을 때: 키 없는 시연(mock) 모드에서만 가짜 대답으로 진행하고,
+  // 실제 모드에서는 아이 말 대신 가짜 대답을 넣지 않고 다시 말하게 한다
+  async function noMicrophone() {
+    setState("thinking");
+    if (await isSttMock()) return answerWithMock();
+    retry("마이크가 안 들려. 다시 눌러 볼래?");
+  }
+
   function answerWithMock() {
     setState("thinking");
     timerRef.current = setTimeout(() => {
@@ -61,8 +69,15 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     }, 700);
   }
 
+  // 받아 둔 마이크가 끊겼으면 (휴대폰에서 다른 소리가 나거나 화면이 꺼졌다 켜질 때) 다시 받는다
+  function dropStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }
+
   async function getStream(): Promise<MediaStream | null> {
-    if (streamRef.current) return streamRef.current;
+    if (streamRef.current?.getAudioTracks().some((t) => t.readyState === "live" && t.enabled)) return streamRef.current;
+    dropStream();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return null;
     try {
       // 한 번 받은 마이크는 화면을 떠날 때까지 유지해 매 턴 권한·시작 지연을 없앤다
@@ -88,8 +103,8 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     acquiringRef.current = false;
     const format = stream && pickRecorderMime();
     if (!stream || !format) {
-      // 마이크를 쓸 수 없으면 가짜 대답으로 진행. 아직 누르고 있으면 손을 뗄 때(release) 처리한다
-      if (!holdingRef.current) answerWithMock();
+      // 마이크를 쓸 수 없다. 아직 누르고 있으면 손을 뗄 때(release) 처리한다
+      if (!holdingRef.current) void noMicrophone();
       return;
     }
     if (!holdingRef.current) {
@@ -98,7 +113,15 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
       return;
     }
 
-    const recorder = new MediaRecorder(stream, { mimeType: format.mimeType });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: format.mimeType });
+    } catch (error) {
+      console.warn("녹음을 시작하지 못했습니다. 마이크를 다시 받습니다", error);
+      dropStream();
+      retry("다시 한 번 눌러서 말해 줄래?");
+      return;
+    }
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => chunks.push(e.data);
     recorder.onstop = () => {
@@ -109,7 +132,15 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
       }
       void transcribe(new Blob(chunks, { type: format.mimeType }), format.ext);
     };
-    recorder.start();
+    try {
+      recorder.start();
+    } catch (error) {
+      // 끊긴 마이크로는 녹음이 시작되지 않는다. 다음 누름에서 마이크를 새로 받는다
+      console.warn("녹음을 시작하지 못했습니다. 마이크를 다시 받습니다", error);
+      dropStream();
+      retry("다시 한 번 눌러서 말해 줄래?");
+      return;
+    }
     recorderRef.current = recorder;
   }
 
@@ -122,7 +153,7 @@ export default function PushToTalk({ disabled, mockAnswer, onAnswer, onPressStar
     if (recorder?.state === "recording") {
       recorder.stop();
     } else {
-      answerWithMock(); // 마이크를 쓸 수 없는 경우
+      void noMicrophone(); // 마이크를 쓸 수 없는 경우
     }
   }
 

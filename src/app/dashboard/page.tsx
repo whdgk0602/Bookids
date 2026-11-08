@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { buildChildReport, MIN_STT_CONFIDENCE, RELIABLE_UTTERANCES, type BookReport, type ChildReport } from "@/lib/report/child-report";
 import { listBooks } from "@/lib/storage/books";
@@ -33,6 +34,8 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
 }
 
 async function Dashboard({ searchParams }: Pick<PageProps<"/dashboard">, "searchParams">) {
+  // 저장소(Blob)를 읽을 때 현재 시각을 쓰므로 빌드 때가 아니라 요청마다 그린다
+  await connection();
   const params = await searchParams;
   const books = await listBooks();
   const names = [...new Set(books.map((b) => b.child ?? NO_NAME))].sort((a, b) => (a === NO_NAME ? 1 : b === NO_NAME ? -1 : a.localeCompare(b, "ko")));

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { getBook } from "@/lib/storage/books";
 import SharedBook from "./shared-book";
@@ -16,6 +17,8 @@ export default function BookPage({ params }: PageProps<"/book/[id]">) {
 }
 
 async function Book({ params }: Pick<PageProps<"/book/[id]">, "params">) {
+  // 저장소(Blob)를 읽을 때 현재 시각을 쓰므로 빌드 때가 아니라 요청마다 그린다
+  await connection();
   const { id } = await params;
   const book = await getBook(id);
   if (!book) notFound();
